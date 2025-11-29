@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calm Pomodoro</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#E0F2F1">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>Focus</h1>
+        </header>
+
+        <main>
+            <div class="timer-display" id="timer">00:00</div>
+
+            <div class="controls">
+                <button id="startBtn" class="btn primary">Start</button>
+                <button id="pauseBtn" class="btn secondary" disabled>Pause</button>
+                <button id="resetBtn" class="btn secondary">Reset</button>
+            </div>
+
+
+
+            <div class="dashboard">
+                <div class="summary-card">
+                    <h2>Insights</h2>
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <span class="stat-label">Today</span>
+                            <span class="stat-value" id="statToday">0m</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Week</span>
+                            <span class="stat-value" id="statWeek">0h</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Month</span>
+                            <span class="stat-value" id="statMonth">0h</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="history-card">
+                    <h2>Recent Sessions</h2>
+                    <ul id="historyList" class="history-list">
+                        <!-- History items will be injected here -->
+                        <li class="empty-state">No sessions yet</li>
+                    </ul>
+                </div>
+            </div>
+        </main>
+    </div>
+    <script src="script.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('./service-worker.js')
+                .then(() => console.log('Service Worker Registered'))
+                .catch((err) => console.log('Service Worker Failed', err));
+        }
+    </script>
+</body>
+
+</html>

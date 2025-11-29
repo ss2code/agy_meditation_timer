@@ -1,0 +1,211 @@
+:root {
+    /* Meditation Theme Palette */
+    --bg-color: #E0F2F1;
+    /* Soft Sage */
+    --card-bg: #FFFFFF;
+    --text-primary: #37474F;
+    /* Muted Charcoal */
+    --text-secondary: #78909C;
+    --accent-color: #A5D6A7;
+    /* Soft Green */
+    --accent-hover: #81C784;
+    --btn-text: #263238;
+    --shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.025);
+    --font-family: 'Outfit', sans-serif;
+    --radius-lg: 24px;
+    --radius-md: 16px;
+    --radius-sm: 12px;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: var(--font-family);
+    background-color: var(--bg-color);
+    color: var(--text-primary);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    transition: background-color 0.8s ease;
+    padding: 2rem;
+}
+
+.container {
+    background-color: var(--card-bg);
+    padding: 3rem;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow);
+    text-align: center;
+    width: 100%;
+    max-width: 480px;
+    transition: transform 0.3s ease;
+}
+
+header h1 {
+    font-weight: 300;
+    font-size: 1.25rem;
+    color: var(--text-secondary);
+    margin-bottom: 2.5rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+}
+
+.timer-display {
+    font-size: 6rem;
+    font-weight: 200;
+    color: var(--text-primary);
+    margin-bottom: 2.5rem;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+}
+
+.controls {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    margin-bottom: 2.5rem;
+}
+
+.btn {
+    padding: 0.875rem 2rem;
+    border: none;
+    border-radius: 50px;
+    /* Pill shape */
+    font-family: var(--font-family);
+    font-size: 1rem;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn.primary {
+    background-color: var(--accent-color);
+    color: var(--btn-text);
+    font-weight: 500;
+    box-shadow: 0 4px 6px rgba(165, 214, 167, 0.3);
+}
+
+.btn.primary:hover {
+    background-color: var(--accent-hover);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 8px rgba(165, 214, 167, 0.4);
+}
+
+.btn.secondary {
+    background-color: transparent;
+    border: 1px solid #CFD8DC;
+    color: var(--text-secondary);
+}
+
+.btn.secondary:hover {
+    border-color: #B0BEC5;
+    color: var(--text-primary);
+    background-color: #FAFAFA;
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+.mode-btn {
+    padding: 0.5rem 1.25rem;
+    border: none;
+    background: transparent;
+    border-radius: 50px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-family: var(--font-family);
+    font-size: 0.875rem;
+    transition: all 0.3s ease;
+}
+
+.mode-btn.active {
+    background-color: #FFFFFF;
+    color: var(--text-primary);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    font-weight: 500;
+}
+
+/* Dashboard Styles */
+.dashboard {
+    border-top: 1px solid #ECEFF1;
+    padding-top: 2rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.dashboard h2 {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 1rem;
+    font-weight: 500;
+    text-align: left;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+}
+
+.stat-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background-color: #F9FAFB;
+    padding: 0.75rem;
+    border-radius: var(--radius-sm);
+}
+
+.stat-label {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.25rem;
+}
+
+.stat-value {
+    font-size: 1rem;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.history-list {
+    list-style: none;
+    text-align: left;
+}
+
+.history-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid #F5F5F5;
+    font-size: 0.875rem;
+    color: var(--text-primary);
+}
+
+.history-item:last-child {
+    border-bottom: none;
+}
+
+.history-time {
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+}
+
+.empty-state {
+    color: var(--text-secondary);
+    font-style: italic;
+    font-size: 0.875rem;
+    padding: 0.5rem 0;
+}
