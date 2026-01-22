@@ -1,0 +1,11 @@
+{
+  "name": "meditation-timer",
+  "version": "1.0.0",
+  "description": "A simple meditation timer PWA",
+  "scripts": {
+    "start": "npx http-server ."
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

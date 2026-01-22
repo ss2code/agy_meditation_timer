@@ -6,6 +6,7 @@ const historyList = document.getElementById('historyList');
 const statToday = document.getElementById('statToday');
 const statWeek = document.getElementById('statWeek');
 const statMonth = document.getElementById('statMonth');
+const headerDate = document.getElementById('headerDate');
 
 let elapsedTime = 0;
 let timerId = null;
@@ -64,11 +65,12 @@ function renderHistory() {
     recent.forEach(session => {
         const date = new Date(session.date);
         const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const dateString = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
         const li = document.createElement('li');
         li.className = 'history-item';
         li.innerHTML = `
             <span>Meditation (${formatDuration(session.duration)})</span>
-            <span class="history-time">${timeString}</span>
+            <span class="history-time">${dateString}, ${timeString}</span>
         `;
         historyList.appendChild(li);
     });
@@ -176,7 +178,18 @@ startBtn.addEventListener('click', startTimer);
 pauseBtn.addEventListener('click', pauseTimer);
 resetBtn.addEventListener('click', resetTimer);
 
+// Header Date Logic
+function updateHeaderDate() {
+    const now = new Date();
+    const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' };
+    if (headerDate) {
+        headerDate.textContent = now.toLocaleString([], options);
+    }
+}
+
 // Initialize
+setInterval(updateHeaderDate, 1000);
+updateHeaderDate();
 updateDisplay();
 renderHistory();
 renderStats();
