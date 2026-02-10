@@ -8,7 +8,7 @@ const statWeek = document.getElementById('statWeek');
 const headerDate = document.getElementById('headerDate');
 const versionFooter = document.getElementById('versionFooter');
 
-const APP_VERSION = 'v5.1';
+const APP_VERSION = 'v5.2';
 
 let elapsedTime = 0;
 let timerId = null;
@@ -190,7 +190,7 @@ class Gong {
         filter.frequency.exponentialRampToValueAtTime(100, time + 9);
 
         const gain = this.ctx.createGain();
-        gain.gain.setValueAtTime(0.8, time);
+        gain.gain.setValueAtTime(1.5, time);
         gain.gain.exponentialRampToValueAtTime(0.001, time + 10);
 
         source.connect(filter);
