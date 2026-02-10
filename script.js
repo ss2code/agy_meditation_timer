@@ -5,11 +5,10 @@ const resetBtn = document.getElementById('resetBtn');
 const historyList = document.getElementById('historyList');
 const statToday = document.getElementById('statToday');
 const statWeek = document.getElementById('statWeek');
-const statMonth = document.getElementById('statMonth');
 const headerDate = document.getElementById('headerDate');
 const versionFooter = document.getElementById('versionFooter');
 
-const APP_VERSION = 'v5.0';
+const APP_VERSION = 'v5.1';
 
 let elapsedTime = 0;
 let timerId = null;

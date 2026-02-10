@@ -218,8 +218,14 @@ header h1 {
 }
 
 .version-footer {
-    margin-top: 2rem;
+    position: fixed;
+    bottom: 1rem;
+    left: 0;
+    width: 100%;
+    text-align: center;
     font-size: 0.75rem;
     color: var(--text-secondary);
     opacity: 0.7;
+    pointer-events: none;
+    /* Let clicks pass through if it overlaps something */
 }
