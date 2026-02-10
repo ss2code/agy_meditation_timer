@@ -42,3 +42,14 @@ A simple, beautiful meditation timer that tracks your sessions and provides gent
 - **Stack**: Vanilla HTML, CSS, and JavaScript.
 - **Audio**: Uses the **Web Audio API** to synthesize gong sounds in real-time using additive synthesis (sine waves + envelopes + filters). This ensures zero latency and works without external assets.
 - **Offline**: Uses a Service Worker to cache all necessary files (`index.html`, `style.css`, `script.js`, `manifest.json`).
+
+## Versioning & Updates
+
+The current version of the app is displayed at the bottom of the main screen.
+
+**For Developers**:
+When making changes that require users to see immediate updates (e.g., modifying CSS, JS, or HTML):
+1.  Bump `APP_VERSION` in `script.js`.
+2.  Bump `CACHE_NAME` in `service-worker.js`.
+3.  Update the script query param in `index.html` (e.g., `script.js?v=X`).
+

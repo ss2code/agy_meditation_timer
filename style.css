@@ -216,3 +216,10 @@ header h1 {
     font-size: 0.875rem;
     padding: 0.5rem 0;
 }
+
+.version-footer {
+    margin-top: 2rem;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    opacity: 0.7;
+}

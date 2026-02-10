@@ -7,6 +7,9 @@ const statToday = document.getElementById('statToday');
 const statWeek = document.getElementById('statWeek');
 const statMonth = document.getElementById('statMonth');
 const headerDate = document.getElementById('headerDate');
+const versionFooter = document.getElementById('versionFooter');
+
+const APP_VERSION = 'v5.0';
 
 let elapsedTime = 0;
 let timerId = null;
@@ -289,6 +292,10 @@ updateHeaderDate();
 updateDisplay();
 renderHistory();
 renderStats();
+
+if (versionFooter) {
+    versionFooter.textContent = APP_VERSION;
+}
 
 // --- Debug / Testing Helpers ---
 window.meditationDebug = {
