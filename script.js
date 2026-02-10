@@ -145,7 +145,7 @@ class Gong {
 
     createGongBuffer() {
         // Synthesize a gong sound
-        const duration = 5.0;
+        const duration = 10.0;
         const sampleRate = this.ctx.sampleRate;
         const length = sampleRate * duration;
         const buffer = this.ctx.createBuffer(1, length, sampleRate);
@@ -162,12 +162,12 @@ class Gong {
 
             // Add harmonics
             harmonics.forEach((h, idx) => {
-                const amp = weights[idx] * Math.exp(-2 * t); // Decay
+                const amp = weights[idx] * Math.exp(-0.5 * t); // Slower decay for longer sound
                 sample += amp * Math.sin(2 * Math.PI * baseFreq * h * t);
             });
 
             // Apply global envelope (attack + decay)
-            const envelope = t < 0.05 ? t / 0.05 : Math.exp(-0.5 * (t - 0.05));
+            const envelope = t < 0.05 ? t / 0.05 : Math.exp(-0.2 * (t - 0.05));
 
             data[i] = sample * envelope * 0.5; // Scale to avoid clipping
         }
@@ -185,11 +185,11 @@ class Gong {
         const filter = this.ctx.createBiquadFilter();
         filter.type = 'lowpass';
         filter.frequency.setValueAtTime(800, time);
-        filter.frequency.exponentialRampToValueAtTime(100, time + 4);
+        filter.frequency.exponentialRampToValueAtTime(100, time + 9);
 
         const gain = this.ctx.createGain();
         gain.gain.setValueAtTime(0.8, time);
-        gain.gain.exponentialRampToValueAtTime(0.001, time + 5);
+        gain.gain.exponentialRampToValueAtTime(0.001, time + 10);
 
         source.connect(filter);
         filter.connect(gain);
@@ -202,8 +202,8 @@ class Gong {
         this.init(); // Ensure context is ready
         const now = this.ctx.currentTime;
         for (let i = 0; i < times; i++) {
-            // Space strikes by 3.5 seconds
-            this.playOnce(now + (i * 3.5));
+            // Space strikes by 5 seconds to allow resonance overlap
+            this.playOnce(now + (i * 5.0));
         }
     }
 }
