@@ -126,6 +126,90 @@ function renderStats() {
     statMonth.textContent = formatDuration(monthSeconds);
 }
 
+// --- Gong Logic ---
+
+class Gong {
+    constructor() {
+        this.ctx = null;
+        this.buffer = null;
+    }
+
+    init() {
+        if (!this.ctx) {
+            this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+            this.createGongBuffer();
+        } else if (this.ctx.state === 'suspended') {
+            this.ctx.resume();
+        }
+    }
+
+    createGongBuffer() {
+        // Synthesize a gong sound
+        const duration = 5.0;
+        const sampleRate = this.ctx.sampleRate;
+        const length = sampleRate * duration;
+        const buffer = this.ctx.createBuffer(1, length, sampleRate);
+        const data = buffer.getChannelData(0);
+
+        // Parameters for synthesis (additive synthesis)
+        const baseFreq = 100; // Low base frequency
+        const harmonics = [1, 2.5, 3.2, 4.1, 5.7]; // Inharmonic for metallic sound
+        const weights = [1, 0.6, 0.4, 0.3, 0.2];
+
+        for (let i = 0; i < length; i++) {
+            const t = i / sampleRate;
+            let sample = 0;
+
+            // Add harmonics
+            harmonics.forEach((h, idx) => {
+                const amp = weights[idx] * Math.exp(-2 * t); // Decay
+                sample += amp * Math.sin(2 * Math.PI * baseFreq * h * t);
+            });
+
+            // Apply global envelope (attack + decay)
+            const envelope = t < 0.05 ? t / 0.05 : Math.exp(-0.5 * (t - 0.05));
+
+            data[i] = sample * envelope * 0.5; // Scale to avoid clipping
+        }
+
+        this.buffer = buffer;
+    }
+
+    playOnce(time) {
+        if (!this.ctx || !this.buffer) return;
+
+        const source = this.ctx.createBufferSource();
+        source.buffer = this.buffer;
+
+        // Lowpass filter to dampen the sound slightly over time (simulating material)
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(800, time);
+        filter.frequency.exponentialRampToValueAtTime(100, time + 4);
+
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(0.8, time);
+        gain.gain.exponentialRampToValueAtTime(0.001, time + 5);
+
+        source.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.ctx.destination);
+
+        source.start(time);
+    }
+
+    play(times = 1) {
+        this.init(); // Ensure context is ready
+        const now = this.ctx.currentTime;
+        for (let i = 0; i < times; i++) {
+            // Space strikes by 3.5 seconds
+            this.playOnce(now + (i * 3.5));
+        }
+    }
+}
+
+const gong = new Gong();
+
 // --- Timer Logic ---
 
 function formatTime(seconds) {
@@ -145,12 +229,24 @@ function updateDisplay() {
 function startTimer() {
     if (timerId) return;
 
+    // Initialize AudioContext on user gesture
+    gong.init();
+
     startBtn.disabled = true;
     pauseBtn.disabled = false;
 
     timerId = setInterval(() => {
         elapsedTime++;
         updateDisplay();
+
+        // Gong Rules
+        if (elapsedTime === 15) {
+            gong.play(1);
+        } else if (elapsedTime > 0 && elapsedTime % 900 === 0) { // Every 15 mins (900s)
+            const count = elapsedTime / 900;
+            gong.play(count);
+        }
+
     }, 1000);
 }
 
