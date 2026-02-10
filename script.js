@@ -289,3 +289,30 @@ updateHeaderDate();
 updateDisplay();
 renderHistory();
 renderStats();
+
+// --- Debug / Testing Helpers ---
+window.meditationDebug = {
+    // Jump to a specific time (in seconds)
+    setTime: (seconds) => {
+        elapsedTime = seconds;
+        updateDisplay();
+        console.log(`Timer set to ${formatTime(elapsedTime)}`);
+    },
+    // Test the gong sound immediately
+    testGong: (strikes = 1) => {
+        console.log(`Testing gong with ${strikes} strikes`);
+        gong.play(strikes);
+    },
+    // Fast forward to next gong event
+    jumpToNextGong: () => {
+        if (elapsedTime < 15) {
+            elapsedTime = 10;
+        } else {
+            const nextInterval = Math.ceil((elapsedTime + 1) / 900) * 900;
+            elapsedTime = nextInterval - 5;
+        }
+        updateDisplay();
+        console.log(`Jumped to ${formatTime(elapsedTime)} (5s before gong)`);
+    }
+};
+console.log("Meditation Timer Debug Tools Available via 'window.meditationDebug'");
