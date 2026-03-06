@@ -8,7 +8,7 @@ const statWeek = document.getElementById('statWeek');
 const headerDate = document.getElementById('headerDate');
 const versionFooter = document.getElementById('versionFooter');
 
-const APP_VERSION = 'v5.2';
+const APP_VERSION = 'v5.3';
 
 let elapsedTime = 0;
 let timerId = null;
@@ -225,7 +225,7 @@ function updateDisplay() {
     document.title = `${formatTime(elapsedTime)} - Meditation`;
 
     // Update Reset button text based on state
-    resetBtn.textContent = (elapsedTime > 0 && !timerId) ? 'Finish' : 'Reset';
+    resetBtn.textContent = 'Finish';
 }
 
 function startTimer() {

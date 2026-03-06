@@ -45,11 +45,76 @@ A simple, beautiful meditation timer that tracks your sessions and provides gent
 
 ## Versioning & Updates
 
-The current version of the app is displayed at the bottom of the main screen.
+The current version is displayed at the bottom of the main screen.
 
-**For Developers**:
-When making changes that require users to see immediate updates (e.g., modifying CSS, JS, or HTML):
+When making changes, always update all three together:
 1.  Bump `APP_VERSION` in `script.js`.
 2.  Bump `CACHE_NAME` in `service-worker.js`.
 3.  Update the script query param in `index.html` (e.g., `script.js?v=X`).
+
+## Development
+
+### Prerequisites
+
+Install these once before your first session:
+
+1. **Node.js** — for `npx` commands
+2. **Java 17** via Homebrew:
+   ```bash
+   brew install openjdk@17
+   ```
+3. **Android Studio** — download from [developer.android.com/studio](https://developer.android.com/studio). During setup, install the Android SDK and create an AVD named **`Meditation_Phone`**.
+4. **Shell environment** — add the following to `~/.zshrc`:
+   ```bash
+   export JAVA_HOME="/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"
+   export PATH="/opt/homebrew/opt/openjdk@17/bin:$PATH"
+   export ANDROID_HOME="$HOME/Library/Android/sdk"
+   export PATH="$ANDROID_HOME/emulator:$ANDROID_HOME/platform-tools:$PATH"
+   ```
+   Then reload: `source ~/.zshrc`
+
+### Session Workflow
+
+All dev tasks go through `run.sh`. It is idempotent — safe to re-run at any point.
+
+**Start of session** — boots the AVD, builds, and launches the app:
+```bash
+./run.sh
+```
+
+**After changing JS/CSS/HTML** — rebuild and re-deploy (~2.5 min):
+```bash
+./run.sh
+```
+
+**After changing JS/CSS/HTML, when AVD + web server are already running** — skip the slow Gradle build:
+
+> Use this only if you haven't changed native Android config. When in doubt, use `./run.sh`.
+
+```bash
+./run.sh --skip-build
+```
+
+**End of session** — shuts down the emulator, web server, and cleans up Gradle temp files:
+```bash
+./run.sh --stop
+```
+
+### What `run.sh` Does
+
+| Step | Action | Skipped when |
+|------|--------|-------------|
+| 1 | Start `http-server` on `:8080` | Already running |
+| 2 | Boot "Meditation Phone" AVD | Already running |
+| 3 | Copy source files → `www/` | `--skip-build` |
+| 4 | `npx cap sync android` | `--skip-build` |
+| 5 | `./gradlew assembleDebug` | `--skip-build` |
+| 6 | Force-stop old app instance | — |
+| 7 | `adb install` + launch | — |
+
+> **Source vs staging:** Edit files in the project root (`script.js`, `index.html`, etc.). The `www/` directory is a Capacitor staging folder — `run.sh` copies root sources into it automatically before every build. Never edit `www/` directly.
+
+### macOS Sequoia Note
+
+`--no-daemon` is always passed to Gradle. This is required on macOS Sequoia — the `com.apple.provenance` sandbox attribute prevents Gradle's forked daemon workers from writing build artifacts. Running without a daemon (single process) is the fix.
 
