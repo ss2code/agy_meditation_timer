@@ -1,0 +1,9 @@
+local_folder/
+local_files/
+node_modules/
+www/
+.DS_Store
+.jdk21/
+jdk21.tar.gz
+android/.gradle_cache/
+ios/
