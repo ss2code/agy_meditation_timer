@@ -1,7 +1,7 @@
 // timer-view.js — Timer screen: display, controls, mini stats, recent sessions
 
 import { formatTime, formatDuration, formatHeaderDate, isSameDay, getWeekStart } from '../../utils/date-helpers.js';
-import { startTimer, pauseTimer, finishTimer, isRunning, onTick, onSessionSave } from '../../timer/timer.js';
+import { startTimer, pauseTimer, finishTimer, isRunning, onTick, onSessionSave, sessionStartTimestamp } from '../../timer/timer.js';
 import { navigateTo } from '../router.js';
 import { analyzeSession } from '../../bio/bio-math-engine.js';
 import { generateMockTelemetry } from '../../bio/mock-data.js';
@@ -202,6 +202,11 @@ function _onStart() {
     _startBtn.disabled = true;
     _pauseBtn.disabled = false;
     _finishBtn.disabled = false;
+
+    // Freeze header to show session start time
+    clearInterval(_dateInterval);
+    _dateInterval = null;
+    _showStartTime();
 }
 
 function _onPause() {
@@ -221,6 +226,10 @@ function _onFinish() {
     _startBtn.disabled = false;
     _pauseBtn.disabled = true;
     _updateTimerDisplay(0);
+
+    // Resume live clock in header
+    _updateHeaderDate();
+    _dateInterval = setInterval(_updateHeaderDate, 1000);
 }
 
 function _updateTimerDisplay(elapsed) {
@@ -233,6 +242,14 @@ function _updateTimerDisplay(elapsed) {
 function _updateHeaderDate() {
     if (_headerDate) {
         _headerDate.textContent = formatHeaderDate(new Date());
+    }
+}
+
+function _showStartTime() {
+    if (_headerDate && sessionStartTimestamp) {
+        const d = new Date(sessionStartTimestamp);
+        const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        _headerDate.textContent = `Started at ${time}`;
     }
 }
 

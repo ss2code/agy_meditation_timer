@@ -25,6 +25,8 @@ AVD_NAME="Meditation_Phone"
 APP_ID="com.shyamsuri.meditationtimer"
 APK="$PROJECT_ROOT/android/app/build/outputs/apk/debug/app-debug.apk"
 WEB_PORT=8080
+# Persistent Gradle cache — survives ./run.sh --stop so distributions aren't re-downloaded
+GRADLE_HOME_DIR="$PROJECT_ROOT/.gradle-home"
 
 # ── Colours ────────────────────────────────────────────────────────────────────
 GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; RESET='\033[0m'
@@ -58,10 +60,10 @@ if [ "$STOP" = true ]; then
     skip "Web server not running"
   fi
 
-  # Clean up Gradle temp directories
-  info "Cleaning Gradle temp caches …"
-  rm -rf /tmp/gradle-home /tmp/gradle-project-cache
-  success "Cleaned /tmp/gradle-home and /tmp/gradle-project-cache"
+  # Clean up only the per-project Gradle cache (build outputs), not the distribution
+  info "Cleaning Gradle project cache …"
+  rm -rf /tmp/gradle-project-cache
+  success "Cleaned /tmp/gradle-project-cache (Gradle distribution preserved in .gradle-home)"
 
   echo ""
   echo -e "${GREEN}All done. Session ended cleanly.${RESET}"
@@ -95,6 +97,15 @@ else
   success "Emulator '$AVD_NAME' is ready"
 fi
 
+# Capture emulator serial so subsequent adb commands target it specifically.
+# This avoids "more than one device/emulator" when a physical phone is also connected.
+EMULATOR_SERIAL=$("$ADB" devices 2>/dev/null | grep "^emulator" | awk '{print $1}' | head -1)
+if [ -z "$EMULATOR_SERIAL" ]; then
+  echo "ERROR: Could not find a running emulator. Run without --skip-build or boot the AVD first." >&2
+  exit 1
+fi
+info "Targeting emulator: $EMULATOR_SERIAL"
+
 # ── 3. Build web sources into www/ via Vite, then cap sync ────────────────────
 if [ "$SKIP_BUILD" = false ]; then
   info "Building web sources with Vite into www/ …"
@@ -116,25 +127,25 @@ if [ "$SKIP_BUILD" = true ]; then
 else
   info "Building APK (--no-daemon required on macOS Sequoia) …"
   cd "$PROJECT_ROOT/android"
-  GRADLE_USER_HOME=/tmp/gradle-home \
+  GRADLE_USER_HOME="$GRADLE_HOME_DIR" \
     ./gradlew assembleDebug --no-daemon --project-cache-dir=/tmp/gradle-project-cache \
     --quiet 2>&1 | tail -5
   success "APK built → $APK"
 fi
 
 # ── 5. Force-stop any running instance ─────────────────────────────────────────
-"$ADB" shell am force-stop "$APP_ID" 2>/dev/null || true
+"$ADB" -s "$EMULATOR_SERIAL" shell am force-stop "$APP_ID" 2>/dev/null || true
 
 # ── 6. Install & launch ────────────────────────────────────────────────────────
 info "Installing APK …"
-"$ADB" install -r "$APK" 2>&1 | grep -v "^$"
+"$ADB" -s "$EMULATOR_SERIAL" install -r "$APK" 2>&1 | grep -v "^$"
 
 # Clear app data so stale service-worker cache is wiped on every deploy
 info "Clearing app data (WebView SW cache, localStorage) …"
-"$ADB" shell pm clear "$APP_ID" 2>/dev/null || true
+"$ADB" -s "$EMULATOR_SERIAL" shell pm clear "$APP_ID" 2>/dev/null || true
 
 info "Launching $APP_ID …"
-"$ADB" shell am start -n "$APP_ID/.MainActivity"
+"$ADB" -s "$EMULATOR_SERIAL" shell am start -n "$APP_ID/.MainActivity"
 success "App launched on '$AVD_NAME'"
 
 echo ""

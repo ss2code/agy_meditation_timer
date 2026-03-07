@@ -122,7 +122,7 @@ if [ "$SKIP_BUILD" = false ]; then
 
   info "Building APK (--no-daemon required on macOS Sequoia)..."
   cd "$PROJECT_ROOT/android"
-  GRADLE_USER_HOME=/tmp/gradle-home \
+  GRADLE_USER_HOME="$PROJECT_ROOT/.gradle-home" \
     ./gradlew assembleDebug --no-daemon --project-cache-dir=/tmp/gradle-project-cache \
     --quiet 2>&1 | tail -5
   success "APK built → $APK"

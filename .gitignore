@@ -6,4 +6,5 @@ www/
 .jdk21/
 jdk21.tar.gz
 android/.gradle_cache/
+.gradle-home/
 ios/
