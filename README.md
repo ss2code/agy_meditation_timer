@@ -74,13 +74,24 @@ npm install
 
 ## Development Workflow
 
-All dev tasks go through `run.sh`. It is idempotent — safe to re-run at any point.
+**AVD (emulator):** `run.sh` targets the Meditation_Phone AVD.
 
 ```bash
 ./run.sh               # full flow: build → sync → install → launch (use after any code change)
 ./run.sh --skip-build  # re-install existing APK without rebuilding (quicker; only safe when native config unchanged)
 ./run.sh --stop        # shut down the emulator and web server
 ```
+
+> **Multi-device note:** `run.sh` detects the emulator serial via `adb devices` and passes `-s <serial>` to all adb commands. This means it works correctly even when a physical phone is also connected via USB.
+
+**Physical phone:** `deploy-phone.sh` targets a real Android device.
+
+```bash
+./deploy-phone.sh               # build + deploy to phone
+./deploy-phone.sh --skip-build  # re-deploy existing APK without rebuilding
+```
+
+It scans connected devices and lets you pick if more than one is found (always prefers physical over emulator). The phone must have USB debugging enabled.
 
 ### What `run.sh` does step by step
 
@@ -115,7 +126,7 @@ src/
   main.js                       # Entry: boot, storage factory, router init, dev panel
   style.css                     # All styles (single file)
   timer/
-    timer.js                    # Timer state machine: startTimer / pauseTimer / finishTimer / gong rules
+    timer.js                    # Timer: wall-clock elapsed time (Date.now()), startTimer / pauseTimer / finishTimer / gong rules; visibilitychange sync for screen-unlock accuracy
     gong.js                     # Gong synthesizer: additive sine waves + Web Audio API envelopes
   storage/
     storage-interface.js        # Abstract base — all methods return Promises
@@ -141,7 +152,7 @@ src/
     date-helpers.js             # formatDuration, formatTime, isSameDay, computeStreak, getLast30DaysData
     csv.js                      # parseCSV / toCSV helpers
 public/
-  service-worker.js             # Offline cache (CACHE_NAME: meditation-timer-v10)
+  service-worker.js             # Offline cache (CACHE_NAME: meditation-timer-v12)
   manifest.json                 # PWA manifest
 www/                            # Vite build output — Capacitor webDir. Never edit directly.
 android/                        # Capacitor Android wrapper project
@@ -157,9 +168,10 @@ android/                        # Capacitor Android wrapper project
 npm test
 ```
 
-Runs 81 Vitest unit tests covering:
+Runs 101 Vitest unit tests covering:
 - Date helpers and CSV utilities
 - Storage migration (v1 → v2)
+- Timer wall-clock accuracy: screen-off throttling, pause/resume, gong catch-up
 - BioMathEngine: settle-time, RSA respiration, `extractRespirationFromHR`, skin temp friction, torpor detection, `classifySession`, `analyzeSession`
 
 Tests run in a Node.js environment (no browser, no Android required).
@@ -207,7 +219,9 @@ When changing `src/` JS, CSS, or HTML, bump **two** things:
 
 Vite handles JS/CSS cache-busting automatically via content hashes — no manual query-param bumping needed.
 
-**Current:** `APP_VERSION = 'v7.0'`, `CACHE_NAME = 'meditation-timer-v10'`
+**Current:** `APP_VERSION = 'v7.2'`, `CACHE_NAME = 'meditation-timer-v12'`
+
+> **Why this matters on device:** The service worker uses a cache-first strategy and caches `index.html` in the WebView. The SW stays alive across APK reinstalls. If `CACHE_NAME` is not bumped, the SW serves the old cached `index.html` and UI changes appear to have no effect — even though `npm run dev` shows them correctly. Bumping `CACHE_NAME` forces the SW to delete the old cache on next activate.
 
 ---
 
