@@ -106,10 +106,17 @@ function _chartSectionHTML(insights) {
 async function _renderCharts(container, telemetry, insights) {
     const { hr = [], hrv = [], temp = [], spo2 = [], resp = [] } = telemetry;
 
-    const hrData   = hr.map((p) => ({ x: p.timestamp, y: p.value }));
-    const hrvData  = hrv.map((p) => ({ x: p.timestamp, y: p.value }));
-    const tempData = temp.map((p) => ({ x: p.timestamp, y: p.value }));
-    const spo2Data = spo2.map((p) => ({ x: p.timestamp, y: p.value }));
+    // Use the first HR sample as the session start anchor for elapsed-time x-axis
+    const startMs = hr.length ? new Date(hr[0].timestamp).getTime() : 0;
+    const toElapsed = (isoStr) => (new Date(isoStr).getTime() - startMs) / 1000;
+
+    const hrData   = hr.map((p) => ({ x: toElapsed(p.timestamp), y: p.value }));
+    const hrvData  = hrv.map((p) => ({ x: toElapsed(p.timestamp), y: p.value }));
+    const tempData = temp.map((p) => ({ x: toElapsed(p.timestamp), y: p.value }));
+    const spo2Data = spo2.map((p) => ({ x: toElapsed(p.timestamp), y: p.value }));
+
+    // All charts share the same x-axis range (session duration from HR data)
+    const xMax = hrData.length ? hrData[hrData.length - 1].x : undefined;
 
     // Respiration series: direct from HC, or RSA-derived from HRV/HR
     const rawResp = resp.length
@@ -117,17 +124,17 @@ async function _renderCharts(container, telemetry, insights) {
         : hrv.length >= 10
             ? extractRespirationFromHRV(hrv)
             : extractRespirationFromHR(hr);
-    const respData = rawResp.map((p) => ({ x: p.timestamp, y: p.breathsPerMinute }));
+    const respData = rawResp.map((p) => ({ x: toElapsed(p.timestamp), y: p.breathsPerMinute }));
 
     // — Heart Rate chart (with settle-time vertical line) —
     const hrAnnotations = insights?.settleTime?.timestamp
-        ? [{ x: insights.settleTime.timestamp, label: 'Settle' }]
+        ? [{ x: toElapsed(insights.settleTime.timestamp), label: 'Settle' }]
         : [];
     const hrCanvas = container.querySelector('#chart-hr');
     if (hrCanvas && hrData.length) {
         _activeCharts.push(await createChart(
             hrCanvas,
-            annotatedLineChartConfig('HR', hrData, hrAnnotations, { color: '#EF5350', yLabel: 'bpm' })
+            annotatedLineChartConfig('HR', hrData, hrAnnotations, { color: '#EF5350', yLabel: 'bpm', xElapsed: true, xMax })
         ));
     }
 
@@ -139,32 +146,32 @@ async function _renderCharts(container, telemetry, insights) {
             hrvCanvas,
             dualLineChartConfig(hLabel, hrvData, 'Resp (br/m)', respData, {
                 color1: '#42A5F5', color2: '#66BB6A',
-                yLabel1: 'ms', yLabel2: 'br/m',
+                yLabel1: 'ms', yLabel2: 'br/m', xElapsed: true, xMax,
             })
         ));
     }
 
     // — Skin Temperature chart (friction periods shaded) —
     const tempAnnotations = (insights?.skinTemp?.frictionPeriods || []).map((p) => ({
-        type: 'box', xMin: p.start, xMax: p.end, color: 'rgba(239,83,80,0.10)',
+        type: 'box', xMin: toElapsed(p.start), xMax: toElapsed(p.end), color: 'rgba(239,83,80,0.10)',
     }));
     const tempCanvas = container.querySelector('#chart-temp');
     if (tempCanvas && tempData.length) {
         _activeCharts.push(await createChart(
             tempCanvas,
-            annotatedLineChartConfig('Temp', tempData, tempAnnotations, { color: '#FFA726', yLabel: '°C' })
+            annotatedLineChartConfig('Temp', tempData, tempAnnotations, { color: '#FFA726', yLabel: '°C', xElapsed: true, xMax })
         ));
     }
 
     // — SpO2 chart (torpor periods highlighted) —
     const spo2Annotations = (insights?.spo2?.torpidPeriods || []).map((p) => ({
-        type: 'box', xMin: p.start, xMax: p.end, color: 'rgba(66,165,245,0.18)',
+        type: 'box', xMin: toElapsed(p.start), xMax: toElapsed(p.end), color: 'rgba(66,165,245,0.18)',
     }));
     const spo2Canvas = container.querySelector('#chart-spo2');
     if (spo2Canvas && spo2Data.length) {
         _activeCharts.push(await createChart(
             spo2Canvas,
-            annotatedLineChartConfig('SpO₂', spo2Data, spo2Annotations, { color: '#7E57C2', yLabel: '%' })
+            annotatedLineChartConfig('SpO₂', spo2Data, spo2Annotations, { color: '#7E57C2', yLabel: '%', xElapsed: true, xMax })
         ));
     }
 }

@@ -9,6 +9,7 @@ import {
     classifySession,
     analyzeSession,
 } from './bio-math-engine.js';
+import { generateMockTelemetry } from './mock-data.js';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -478,5 +479,74 @@ describe('analyzeSession integration', () => {
         if (insights.spo2.torpidFlag) {
             expect(insights.spo2.torpidPeriods.length).toBeGreaterThan(0);
         }
+    });
+});
+
+// ─── generateMockTelemetry (duration-aware mock data) ────────────────────────
+
+describe('generateMockTelemetry', () => {
+    it('generates telemetry spanning the requested duration', () => {
+        const startMs = BASE_MS;
+        const durationSecs = 120; // 2 minutes
+        const tel = generateMockTelemetry(startMs, durationSecs);
+
+        const hrStart = new Date(tel.hr[0].timestamp).getTime();
+        const hrEnd   = new Date(tel.hr[tel.hr.length - 1].timestamp).getTime();
+        const spanSecs = (hrEnd - hrStart) / 1000;
+
+        expect(spanSecs).toBeLessThanOrEqual(durationSecs);
+        expect(spanSecs).toBeGreaterThanOrEqual(durationSecs - 5); // within one HR interval
+    });
+
+    it('does NOT produce 45-min data for a short session', () => {
+        const tel = generateMockTelemetry(BASE_MS, 70); // 70 seconds
+        const hrEnd = new Date(tel.hr[tel.hr.length - 1].timestamp).getTime();
+        const spanSecs = (hrEnd - BASE_MS) / 1000;
+        expect(spanSecs).toBeLessThanOrEqual(70);
+    });
+
+    it('produces correct number of HR samples (every 5s)', () => {
+        const tel = generateMockTelemetry(BASE_MS, 120);
+        // 120s / 5s = 24 intervals + 1 start point = 25
+        expect(tel.hr.length).toBe(25);
+    });
+
+    it('produces minimal temp/spo2 for very short sessions', () => {
+        const tel = generateMockTelemetry(BASE_MS, 20); // 20 seconds
+        // temp every 30s: only t=0 → 1 point
+        expect(tel.temp.length).toBe(1);
+        // spo2 every 60s: only t=0 → 1 point
+        expect(tel.spo2.length).toBe(1);
+    });
+
+    it('supports all three profile names', () => {
+        for (const name of ['deep', 'restless', 'somnolent']) {
+            const tel = generateMockTelemetry(BASE_MS, 300, name);
+            expect(tel.hr.length).toBeGreaterThan(0);
+            expect(tel.source).toBe('mock');
+        }
+    });
+
+    it('defaults to deep profile for unknown name', () => {
+        const tel = generateMockTelemetry(BASE_MS, 300, 'unknown');
+        expect(tel.hr.length).toBeGreaterThan(0);
+    });
+
+    it('produces analyzable data for a 2-min session', () => {
+        const tel = generateMockTelemetry(BASE_MS, 120);
+        const insights = analyzeSession(tel);
+        expect(insights.avgHR).not.toBeNull();
+        expect(insights.sessionQuality).toBeDefined();
+        // Settle time may or may not be found depending on HR pattern in 120s
+        if (insights.settleTime) {
+            expect(insights.settleTime.seconds).toBeLessThanOrEqual(120);
+        }
+    });
+
+    it('produces valid 45-min deep session matching original profile behavior', () => {
+        const tel = generateMockTelemetry(BASE_MS, 2700, 'deep');
+        const insights = analyzeSession(tel);
+        expect(insights.sessionQuality).toBe('deep_absorption');
+        expect(insights.settleTime).not.toBeNull();
     });
 });

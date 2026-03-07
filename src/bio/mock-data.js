@@ -23,6 +23,64 @@ function makeSeries(startMs, durationSecs, intervalSecs, valueFn) {
 const BASE_MS = new Date('2026-03-06T08:00:00Z').getTime();
 const DURATION = 45 * 60; // 45 minutes in seconds
 
+// Reference duration for absolute physiological rates (same rates regardless of session length)
+const REF_DURATION = 2700;
+
+/**
+ * Generate mock telemetry for a session of any duration.
+ * Uses absolute physiological rates — short sessions show only the beginning
+ * of the pattern, which is more realistic than compressing 45 min into 1 min.
+ *
+ * @param {number} startMs - epoch ms for session start
+ * @param {number} durationSecs - actual session duration
+ * @param {'deep'|'restless'|'somnolent'} [profileName='deep']
+ * @returns {{ hr, hrv, temp, spo2, source: 'mock' }}
+ */
+export function generateMockTelemetry(startMs, durationSecs, profileName = 'deep') {
+    const generators = {
+        deep: {
+            hr: (t) => {
+                const target = t < 600 ? 75 - (t / 600) * 17 : 58;
+                return target + Math.sin(t * 0.05) * 2;
+            },
+            hrv: (t) => {
+                const baseRR = 900 + (t / REF_DURATION) * 100;
+                return baseRR + Math.sin((2 * Math.PI * t) / 12) * 80;
+            },
+            temp: (t) => 33.0 + (t / REF_DURATION) * 1.5 + (Math.random() - 0.5) * 0.05,
+            spo2: () => 97.5 + (Math.random() - 0.5) * 0.5,
+        },
+        restless: {
+            hr: (t) => 80 + (Math.sin(t * 0.3) + Math.cos(t * 0.7)) * 6,
+            hrv: (t) => 750 + Math.sin(t * 1.3) * 120 + Math.random() * 60,
+            temp: (t) => 33.2 - (t / REF_DURATION) * 0.3 + (Math.random() - 0.5) * 0.1,
+            spo2: () => 97 + (Math.random() - 0.5) * 0.5,
+        },
+        somnolent: {
+            hr: (t) => 70 - (t / REF_DURATION) * 15 + (Math.random() - 0.5) * 3,
+            hrv: (t) => {
+                const baseRR = 820 + (t / REF_DURATION) * 150;
+                return baseRR + Math.sin((2 * Math.PI * t) / 20) * 50;
+            },
+            temp: (t) => 33.5 + (t / REF_DURATION) * 0.4 + (Math.random() - 0.5) * 0.1,
+            spo2: (t) => {
+                if (t < REF_DURATION / 2) return 97 - (Math.random() * 0.5);
+                const drop = ((t - REF_DURATION / 2) / (REF_DURATION / 2)) * 4;
+                return 97 - drop - (Math.random() * 0.5);
+            },
+        },
+    };
+
+    const profile = generators[profileName] || generators.deep;
+    return {
+        hr:   makeSeries(startMs, durationSecs, 5,  profile.hr),
+        hrv:  makeSeries(startMs, durationSecs, 1,  profile.hrv),
+        temp: makeSeries(startMs, durationSecs, 30, profile.temp),
+        spo2: makeSeries(startMs, durationSecs, 60, profile.spo2),
+        source: 'mock',
+    };
+}
+
 /**
  * Profile A — "The Restless Mind"
  * High starting HR, erratic fluctuations, never settles.

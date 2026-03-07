@@ -75,10 +75,55 @@ export function barChartConfig(labels, data, opts = {}) {
 }
 
 /**
+ * Format elapsed seconds as a concise label: "0m", "0:30", "1m", "1:30", "10m" etc.
+ * @param {number} secs
+ * @returns {string}
+ */
+function _formatElapsed(secs) {
+    const m = Math.floor(secs / 60);
+    const s = Math.round(secs % 60);
+    if (s === 0) return `${m}m`;
+    return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+/**
+ * Shared x-axis config for elapsed-seconds mode (linear scale).
+ * @param {number} [xMax] - explicit end of session in seconds; ensures all charts share the same range
+ */
+function _elapsedXScale(xMax) {
+    return {
+        type: 'linear',
+        min: 0,
+        ...(xMax != null ? { max: xMax } : {}),
+        grid: { display: false },
+        ticks: {
+            color: '#78909C',
+            font: { size: 10 },
+            maxTicksLimit: 5,
+            maxRotation: 0,
+            callback: (v) => v >= 0 ? _formatElapsed(v) : '',
+        },
+    };
+}
+
+/** Shared x-axis config for wall-clock time mode. */
+function _timeXScale() {
+    return {
+        type: 'time',
+        grid: { display: false },
+        time: {
+            displayFormats: { second: 'h:mm', minute: 'h:mm', hour: 'h:mm a' },
+        },
+        ticks: { color: '#78909C', font: { size: 10 }, maxTicksLimit: 5, maxRotation: 0 },
+    };
+}
+
+/**
  * Build a line chart config for bio time-series.
  * @param {string} label
- * @param {Array<{x: string, y: number}>} data - x = ISO timestamp
+ * @param {Array<{x: string|number, y: number}>} data - x = ISO timestamp or elapsed seconds
  * @param {Object} [opts]
+ * @param {boolean} [opts.xElapsed] - if true, x values are elapsed seconds (linear axis)
  * @returns {Object} Chart.js config
  */
 export function lineChartConfig(label, data, opts = {}) {
@@ -101,14 +146,16 @@ export function lineChartConfig(label, data, opts = {}) {
             maintainAspectRatio: false,
             plugins: {
                 legend: { display: false },
-                tooltip: { mode: 'index', intersect: false },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false,
+                    callbacks: opts.xElapsed
+                        ? { title: (items) => _formatElapsed(items[0]?.parsed?.x ?? 0) }
+                        : {},
+                },
             },
             scales: {
-                x: {
-                    type: 'time',
-                    grid: { display: false },
-                    ticks: { color: '#78909C', font: { size: 10 }, maxTicksLimit: 6, maxRotation: 0 },
-                },
+                x: opts.xElapsed ? _elapsedXScale(opts.xMax) : _timeXScale(),
                 y: {
                     grid: { color: '#F5F5F5' },
                     ticks: { color: '#78909C', font: { size: 10 } },
@@ -123,16 +170,17 @@ export function lineChartConfig(label, data, opts = {}) {
  * Line chart with vertical-line and/or box annotations.
  *
  * @param {string} label
- * @param {Array<{x: string, y: number}>} data
+ * @param {Array<{x: string|number, y: number}>} data
  * @param {Array<{
  *   type?: 'line'|'box',
- *   x?: string,         // for type='line': vertical line at this timestamp
- *   xMin?: string,      // for type='box'
- *   xMax?: string,      // for type='box'
+ *   x?: string|number,   // for type='line': timestamp or elapsed seconds
+ *   xMin?: string|number,
+ *   xMax?: string|number,
  *   label?: string,
  *   color?: string
  * }>} annotations
  * @param {Object} [opts]
+ * @param {boolean} [opts.xElapsed] - if true, x values are elapsed seconds (linear axis)
  * @returns {Object} Chart.js config
  */
 export function annotatedLineChartConfig(label, data, annotations = [], opts = {}) {
@@ -186,15 +234,17 @@ export function annotatedLineChartConfig(label, data, annotations = [], opts = {
             maintainAspectRatio: false,
             plugins: {
                 legend: { display: false },
-                tooltip: { mode: 'index', intersect: false },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false,
+                    callbacks: opts.xElapsed
+                        ? { title: (items) => _formatElapsed(items[0]?.parsed?.x ?? 0) }
+                        : {},
+                },
                 annotation: { annotations: annotationObjs },
             },
             scales: {
-                x: {
-                    type: 'time',
-                    grid: { display: false },
-                    ticks: { color: '#78909C', font: { size: 10 }, maxTicksLimit: 6, maxRotation: 0 },
-                },
+                x: opts.xElapsed ? _elapsedXScale(opts.xMax) : _timeXScale(),
                 y: {
                     grid: { color: '#F5F5F5' },
                     ticks: { color: '#78909C', font: { size: 10 } },
@@ -208,10 +258,11 @@ export function annotatedLineChartConfig(label, data, annotations = [], opts = {
 /**
  * Dual-line chart: two datasets on separate left/right y-axes.
  * @param {string} label1
- * @param {Array<{x: string, y: number}>} data1
+ * @param {Array<{x: string|number, y: number}>} data1
  * @param {string} label2
- * @param {Array<{x: string, y: number}>} data2
+ * @param {Array<{x: string|number, y: number}>} data2
  * @param {Object} [opts]
+ * @param {boolean} [opts.xElapsed] - if true, x values are elapsed seconds (linear axis)
  * @returns {Object} Chart.js config
  */
 export function dualLineChartConfig(label1, data1, label2, data2, opts = {}) {
@@ -252,14 +303,16 @@ export function dualLineChartConfig(label1, data1, label2, data2, opts = {}) {
                     display: true,
                     labels: { boxWidth: 12, font: { size: 11 } },
                 },
-                tooltip: { mode: 'index', intersect: false },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false,
+                    callbacks: opts.xElapsed
+                        ? { title: (items) => _formatElapsed(items[0]?.parsed?.x ?? 0) }
+                        : {},
+                },
             },
             scales: {
-                x: {
-                    type: 'time',
-                    grid: { display: false },
-                    ticks: { color: '#78909C', font: { size: 10 }, maxTicksLimit: 6, maxRotation: 0 },
-                },
+                x: opts.xElapsed ? _elapsedXScale(opts.xMax) : _timeXScale(),
                 y: {
                     type: 'linear',
                     position: 'left',

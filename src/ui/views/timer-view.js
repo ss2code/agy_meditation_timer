@@ -4,7 +4,7 @@ import { formatTime, formatDuration, formatHeaderDate, isSameDay, getWeekStart }
 import { startTimer, pauseTimer, finishTimer, isRunning, onTick, onSessionSave } from '../../timer/timer.js';
 import { navigateTo } from '../router.js';
 import { analyzeSession } from '../../bio/bio-math-engine.js';
-import { PROFILE_DEEP } from '../../bio/mock-data.js';
+import { generateMockTelemetry } from '../../bio/mock-data.js';
 import * as healthConnect from '../../bio/health-connect-service.js';
 
 let _storage = null;
@@ -85,7 +85,8 @@ async function _attachTelemetry(session) {
 }
 
 async function _attachMockTelemetry(session) {
-    const telemetry = _remapTelemetry(PROFILE_DEEP, session.startTimestamp);
+    const startMs   = new Date(session.startTimestamp).getTime();
+    const telemetry = generateMockTelemetry(startMs, session.duration);
     const insights  = analyzeSession(telemetry);
     await _storage.saveTelemetry(session.id, telemetry);
     session.hasTelemetry = true;
@@ -140,22 +141,6 @@ async function _attachHCTelemetry(session) {
     } finally {
         _setHCStatus('');
     }
-}
-
-/** Remap PROFILE_DEEP timestamps to the actual session start time. */
-function _remapTelemetry(profile, startTimestamp) {
-    const offset = new Date(startTimestamp).getTime() - new Date(profile.hr[0].timestamp).getTime();
-    const shift  = (s) => s.map((p) => ({
-        ...p,
-        timestamp: new Date(new Date(p.timestamp).getTime() + offset).toISOString(),
-    }));
-    return {
-        hr:   shift(profile.hr),
-        hrv:  shift(profile.hrv),
-        temp: shift(profile.temp),
-        spo2: shift(profile.spo2),
-        source: 'mock',
-    };
 }
 
 // ── HC UI helpers ──────────────────────────────────────────────────────────
