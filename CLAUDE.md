@@ -18,7 +18,7 @@ npm run preview  # serves www/ at :4173
 
 **Tests:**
 ```bash
-npm test         # Vitest (73 tests)
+npm test         # Vitest (101 tests)
 ```
 
 ## Architecture
@@ -30,7 +30,7 @@ src/
   main.js                    ← entry point: boot, storage factory, router init
   style.css                  ← all styles
   timer/
-    timer.js                 ← timer state, startTimer/pauseTimer/finishTimer, gong rules
+    timer.js                 ← wall-clock elapsed time (Date.now()), startTimer/pauseTimer/finishTimer, gong rules, visibilitychange sync
     gong.js                  ← Gong class: additive synthesis, Web Audio API
   storage/
     storage-interface.js     ← abstract base (all methods return Promises)
@@ -41,21 +41,22 @@ src/
   bio/
     bio-math-engine.js       ← pure signal processing: settleTime, RSA respiration, skin temp, torpor
     mock-data.js             ← synthetic profiles: PROFILE_RESTLESS, PROFILE_DEEP, PROFILE_SOMNOLENT
+    health-connect-service.js ← Android Health Connect: checkAvailability, requestPermissions, querySession
   ui/
     router.js                ← hash-based routing (#timer #history #session/{id} #insights)
     components/
       tab-bar.js             ← bottom nav (Timer / History / Insights)
       chart-panel.js         ← createChart(), barChartConfig(), lineChartConfig()
     views/
-      timer-view.js          ← timer; saves session automatically on Finish
-      session-view.js        ← session detail: bio insights card
+      timer-view.js          ← timer UI; attaches Health Connect or mock telemetry on Finish
+      session-view.js        ← session detail: bio insights card + 4 Chart.js panels
       dashboard-view.js      ← history grouped by date
-      insights-view.js       ← weekly stats, streak, 30-day bar chart
+      insights-view.js       ← weekly stats, streak, 30-day bar chart, settle-time trend
   utils/
     date-helpers.js          ← formatDuration, formatTime, isSameDay, computeStreak, getLast30DaysData
     csv.js                   ← parseCSV, toCSV
 public/
-  service-worker.js          ← offline cache (CACHE_NAME: meditation-timer-v9)
+  service-worker.js          ← offline cache (CACHE_NAME: meditation-timer-v12)
   manifest.json
 www/                         ← Vite build output (Capacitor webDir — do not edit directly)
 ```
@@ -63,8 +64,13 @@ www/                         ← Vite build output (Capacitor webDir — do not 
 **Storage factory** (`main.js`): `createStorageAdapter()` returns `FilesystemAdapter` on native
 Capacitor, `LocalStorageAdapter` in browser.
 
-**Timer flow:** `startTimer()` → `setInterval` → gong rules → `finishTimer()` → `onSessionSave`
-callback → `saveSession()` immediately.
+**Timer flow:** `startTimer()` → records `Date.now()` as wall-clock start → `setInterval` fires
+UI ticks → elapsed computed as `floor((Date.now() - startWall) / 1000)` → gong rules →
+`finishTimer()` → `onSessionSave` callback → `saveSession()` immediately.
+
+Wall-clock design is intentional: Android throttles/freezes `setInterval` when screen turns off.
+A tick counter would drift; `Date.now()` is always accurate. `visibilitychange` forces immediate
+resync when screen unlocks.
 
 **Gong rules:**
 - `t=15s`: 1 strike (settling-in)
@@ -85,7 +91,40 @@ When changing `src/` JS, CSS, or HTML, bump **two** things:
 
 Vite handles JS/CSS cache-busting automatically via content hashes.
 
-**Current:** `APP_VERSION='v6.0'`, `CACHE_NAME='meditation-timer-v9'`
+**Current:** `APP_VERSION='v7.2'`, `CACHE_NAME='meditation-timer-v12'`
+
+**Why CACHE_NAME matters on device:** The service worker caches `index.html` with a
+cache-first strategy and stays alive across APK reinstalls. If CACHE_NAME is not bumped,
+the SW serves the old cached `index.html` — so UI changes appear to have no effect on
+device even though `npm run dev` shows them correctly. Bumping CACHE_NAME forces the SW
+to delete the old cache on next activate.
+
+## Mobile / Android
+
+**Build and deploy to AVD:**
+```bash
+./run.sh                # full flow: build → cap sync → gradle → install → launch
+./run.sh --skip-build   # re-install existing APK without rebuilding
+./run.sh --stop         # shut down emulator + web server
+```
+
+`run.sh` detects the emulator serial via `adb devices | grep "^emulator"` and passes
+`-s $EMULATOR_SERIAL` to all adb commands. This is required — if a physical phone is also
+connected, plain `adb` fails with "more than one device/emulator".
+
+**Build and deploy to physical phone:**
+```bash
+./deploy-phone.sh               # build + deploy to physical device
+./deploy-phone.sh --skip-build  # re-deploy existing APK
+```
+
+`deploy-phone.sh` scans connected devices and prompts for selection when multiple are found.
+
+**Gradle cache:** Both scripts use `GRADLE_USER_HOME="$PROJECT_ROOT/.gradle-home"` (gitignored,
+persistent). Do not change this to `/tmp/` — it gets wiped and causes a full Gradle distribution
+re-download (~200 MB) on every run.
+
+See `android/CLAUDE.md` for Capacitor sync details, CLI build flags, and AVD setup.
 
 ## Debug Tools (Browser Console)
 
@@ -99,17 +138,3 @@ meditationDebug.setTime(895)         // jump to 14:55 (gong at 15:00)
 meditationDebug.jumpToNextGong()     // auto-jump 5s before next gong
 meditationDebug.storage              // storage adapter instance
 ```
-
-## Mobile / Android
-
-**Build and deploy to AVD:**
-```bash
-./run.sh                # full flow: build → cap sync → gradle → install → launch
-./run.sh --skip-build   # re-install existing APK without rebuilding
-./run.sh --stop         # shut down emulator + web server
-```
-
-`run.sh` runs `npm run build` (Vite → `www/`), then `cap sync android`, then Gradle.
-The http-server it starts serves `www/` at `:8080` (the built app, same as the APK).
-
-See `android/CLAUDE.md` for Capacitor sync details, CLI build flags, and AVD setup.
