@@ -194,7 +194,31 @@ After each session the app runs `analyzeSession(telemetry)` on the biometric tim
 
 **Respiration from HR (RSA)** — heart rate rises on inhale and falls on exhale (respiratory sinus arrhythmia). The engine resamples HR to uniform 4 Hz, removes baseline drift (25 s moving average), then finds the dominant oscillation frequency via DFT (Hanning-windowed) with parabolic interpolation in the 0.05–0.6 Hz respiratory band (3–36 br/min). This spectral approach detects breathing rate regardless of RSA amplitude — critical for sparse, pre-averaged Health Connect data where the oscillation may be < 1 bpm.
 
-**Session quality** — classified as Deep, Restless, or Somnolent based on settle time, HR variability, respiration stability, and torpor flags.
+### Session Quality Tags
+
+After each session with telemetry, one of five quality tags is assigned using a
+priority-ordered decision tree (first match wins):
+
+| Tag | What it means |
+|---|---|
+| **Somnolent** | Likely fell asleep — SpO2 dropped ≥3% (or below 94%) alongside near-zero breathing (< 4 br/min) |
+| **Deep Absorption** | Breathing nearly stopped (< 6 br/min) in at least one 30-sec window AND wrist temperature rose (peripheral vasodilation) |
+| **Absorbed** | Heart rate settled within 5 minutes of starting |
+| **Settling** | Heart rate settled, but took more than 5 minutes |
+| **Restless** | Heart rate never stabilised, or no telemetry available |
+
+**"Settled" definition:** HR stays within 5% of the session minimum for ≥60 consecutive seconds
+(first 30 s excluded as warm-up noise).
+
+**Respiration source priority:**
+1. Direct Health Connect `respiratoryRate` field (high confidence)
+2. RSA from RR intervals if HRV ≥ 10 samples (medium confidence)
+3. RSA from HR bpm (low confidence, sparse-data fallback)
+
+**RSA algorithm:** resample to 4 Hz → detrend with 25 s moving average → DFT + Hanning window →
+parabolic interpolation for sub-bin accuracy → dominant frequency in 0.05–0.6 Hz band (3–36 br/min),
+60 s sliding windows with 30 s step. Detects breathing rate regardless of RSA amplitude — critical
+for sparse, pre-averaged Health Connect data where oscillations may be < 1 bpm.
 
 ---
 
