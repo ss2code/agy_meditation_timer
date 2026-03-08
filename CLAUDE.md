@@ -18,7 +18,7 @@ npm run preview  # serves www/ at :4173
 
 **Tests:**
 ```bash
-npm test         # Vitest (101 tests)
+npm test         # Vitest (112 tests)
 ```
 
 ## Architecture
@@ -56,7 +56,7 @@ src/
     date-helpers.js          ← formatDuration, formatTime, isSameDay, computeStreak, getLast30DaysData
     csv.js                   ← parseCSV, toCSV
 public/
-  service-worker.js          ← offline cache (CACHE_NAME: meditation-timer-v12)
+  service-worker.js          ← offline cache (CACHE_NAME: meditation-timer-v21)
   manifest.json
 www/                         ← Vite build output (Capacitor webDir — do not edit directly)
 ```
@@ -79,8 +79,21 @@ resync when screen unlocks.
 **Session schema v2** (key fields):
 ```js
 { id, startTimestamp, endTimestamp, duration,
-  hasTelemetry, insights, type: 'meditation', schemaVersion: 2 }
+  hasTelemetry, insights, type: 'meditation', schemaVersion: 2,
+  telemetrySource: 'health_connect'|'mock', telemetryReason: string }
 ```
+
+**RSA Respiration algorithm** (`bio-math-engine.js`):
+Heart rate oscillates with breathing (Respiratory Sinus Arrhythmia). The engine extracts
+breathing rate by: (1) resampling to uniform 4 Hz, (2) detrending with 25 s moving average,
+(3) finding the dominant frequency via DFT with Hanning window in each 60 s sliding window
+(step 30 s). Uses parabolic interpolation for sub-bin accuracy. Band: 0.05–0.6 Hz (3–36 bpm).
+Previous zero-crossing approach undercounted with low-amplitude RSA from sparse Health Connect data.
+
+**Health Connect permissions**: Only `heartRate` is required for `granted = true`. Other types
+(`heartRateVariability`, `oxygenSaturation`, `respiratoryRate`) are requested but treated as
+optional — Samsung watches may not support all HC data types. The "Update Health Connect"
+button in session-view always checks/requests permissions before querying.
 
 ## Versioning
 
@@ -91,7 +104,7 @@ When changing `src/` JS, CSS, or HTML, bump **two** things:
 
 Vite handles JS/CSS cache-busting automatically via content hashes.
 
-**Current:** `APP_VERSION='v7.2'`, `CACHE_NAME='meditation-timer-v12'`
+**Current:** `APP_VERSION='v7.11'`, `CACHE_NAME='meditation-timer-v21'`
 
 **Why CACHE_NAME matters on device:** The service worker caches `index.html` with a
 cache-first strategy and stays alive across APK reinstalls. If CACHE_NAME is not bumped,

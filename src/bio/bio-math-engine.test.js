@@ -8,6 +8,7 @@ import {
     detectTorpor,
     classifySession,
     analyzeSession,
+    computeEffectiveSampleRate,
 } from './bio-math-engine.js';
 import { generateMockTelemetry } from './mock-data.js';
 
@@ -479,6 +480,115 @@ describe('analyzeSession integration', () => {
         if (insights.spo2.torpidFlag) {
             expect(insights.spo2.torpidPeriods.length).toBeGreaterThan(0);
         }
+    });
+});
+
+// ─── RSA Sample Density Guard ────────────────────────────────────────────────
+
+describe('RSA sample density guard', () => {
+    it('returns empty for HR at 30s intervals (0.033 Hz < 0.1 Hz threshold)', () => {
+        // 30s interval = 0.033 Hz — below Nyquist guard
+        const hr = makeSeries(2700, 30, (t) => 65 + Math.sin((2 * Math.PI * t) / 12) * 5);
+        const result = extractRespirationFromHR(hr, 60);
+        expect(result).toEqual([]);
+    });
+
+    it('returns results for HR at 5s intervals (0.2 Hz >= 0.1 Hz threshold)', () => {
+        // 5s interval = 0.2 Hz — above Nyquist guard
+        const hr = makeSeries(2700, 5, (t) => 65 + Math.sin((2 * Math.PI * t) / 12) * 5);
+        const result = extractRespirationFromHR(hr, 60);
+        expect(result.length).toBeGreaterThan(0);
+    });
+
+    it('returns results for HRV at 1s intervals (existing behavior)', () => {
+        const hrv = makeSeries(2700, 1, (t) => 950 + Math.sin((2 * Math.PI * t) / 12) * 80);
+        const result = extractRespirationFromHRV(hrv, 60);
+        expect(result.length).toBeGreaterThan(0);
+    });
+});
+
+// ─── computeEffectiveSampleRate ──────────────────────────────────────────────
+
+describe('computeEffectiveSampleRate', () => {
+    it('returns 0 for empty or single-point series', () => {
+        expect(computeEffectiveSampleRate([])).toBe(0);
+        expect(computeEffectiveSampleRate([{ timestamp: new Date().toISOString() }])).toBe(0);
+    });
+
+    it('computes correct rate for 5s intervals', () => {
+        const series = makeSeries(100, 5, () => 0);
+        const rate = computeEffectiveSampleRate(series);
+        expect(rate).toBeCloseTo(0.2, 2);
+    });
+
+    it('computes correct rate for 30s intervals', () => {
+        const series = makeSeries(300, 30, () => 0);
+        const rate = computeEffectiveSampleRate(series);
+        expect(rate).toBeCloseTo(0.033, 2);
+    });
+});
+
+// ─── analyzeSession metadata ─────────────────────────────────────────────────
+
+describe('analyzeSession metadata', () => {
+    it('includes respirationRate.source and confidence', () => {
+        const telemetry = {
+            hr:   makeSeries(2700, 5,  (t) => 65 + Math.sin((2 * Math.PI * t) / 12) * 5),
+            hrv:  [],
+            temp: [],
+            spo2: [],
+        };
+        const insights = analyzeSession(telemetry);
+        expect(insights.respirationRate.source).toBe('rsa_hr');
+        expect(insights.respirationRate.confidence).toBe('low');
+    });
+
+    it('sets source to health_connect_direct when resp provided', () => {
+        const hr   = makeSeries(2700, 5, (t) => 65);
+        const resp = makeSeries(2700, 60, () => 5.5);
+        const insights = analyzeSession({ hr, hrv: [], temp: [], spo2: [], resp });
+        expect(insights.respirationRate.source).toBe('health_connect_direct');
+        expect(insights.respirationRate.confidence).toBe('high');
+    });
+
+    it('sets source to rsa_hrv when dense HRV data available', () => {
+        const telemetry = {
+            hr:   makeSeries(2700, 5,  (t) => 65),
+            hrv:  makeSeries(2700, 1,  (t) => 950 + Math.sin((2 * Math.PI * t) / 12) * 80),
+            temp: [],
+            spo2: [],
+        };
+        const insights = analyzeSession(telemetry);
+        expect(insights.respirationRate.source).toBe('rsa_hrv');
+        expect(insights.respirationRate.confidence).toBe('medium');
+    });
+
+    it('includes telemetryDiagnostics with sample counts and rates', () => {
+        const telemetry = {
+            hr:   makeSeries(2700, 5,  (t) => 65),
+            hrv:  makeSeries(2700, 1,  (t) => 950),
+            temp: makeSeries(2700, 30, () => 33),
+            spo2: makeSeries(2700, 60, () => 97),
+        };
+        const insights = analyzeSession(telemetry);
+        expect(insights.telemetryDiagnostics).toBeDefined();
+        expect(insights.telemetryDiagnostics.sampleCounts.hr).toBe(telemetry.hr.length);
+        expect(insights.telemetryDiagnostics.sampleCounts.hrv).toBe(telemetry.hrv.length);
+        expect(insights.telemetryDiagnostics.effectiveRates.hr).toBeCloseTo(0.2, 2);
+        expect(insights.telemetryDiagnostics.effectiveRates.hrv).toBeCloseTo(1.0, 1);
+    });
+
+    it('sets insufficient_data when sparse HR cannot produce RSA', () => {
+        // 30s intervals = too sparse for RSA
+        const telemetry = {
+            hr:   makeSeries(2700, 30, (t) => 65 + Math.sin((2 * Math.PI * t) / 12) * 5),
+            hrv:  [],
+            temp: [],
+            spo2: [],
+        };
+        const insights = analyzeSession(telemetry);
+        expect(insights.respirationRate.source).toBe('insufficient_data');
+        expect(insights.respirationRate.confidence).toBe('none');
     });
 });
 

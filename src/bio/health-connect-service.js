@@ -33,11 +33,12 @@ export async function requestReadWritePermissions() {
             read:  HC_READ_TYPES,
             write: HC_WRITE_TYPES,
         });
-        console.log('[HC] requestAuthorization result:', JSON.stringify(status));
+        console.log('[HC] requestAuthorization (rw) result:', JSON.stringify(status));
         const missing = HC_READ_TYPES.filter((t) => !status.readAuthorized.includes(t));
-        return { granted: missing.length === 0, missing };
+        const granted = status.readAuthorized.includes('heartRate');
+        return { granted, missing };
     } catch (err) {
-        console.error('[HC] requestAuthorization error:', err);
+        console.error('[HC] requestAuthorization (rw) error:', err);
         return { granted: false, missing: HC_READ_TYPES };
     }
 }
@@ -108,30 +109,38 @@ export async function seedTestData(startMs, durationSecs = 2700, onProgress) {
 }
 
 /**
- * Request read permissions for all required Health Connect data types.
- * On Android, shows the Health Connect permission dialog if not already granted.
+ * Request read permissions for all Health Connect data types.
+ * Only heartRate is REQUIRED — others are optional (device may not support them).
  * @returns {Promise<{ granted: boolean, missing: string[] }>}
  */
 export async function requestPermissions() {
     try {
         const status = await Health.requestAuthorization({ read: HC_READ_TYPES });
+        console.log('[HC] requestAuthorization result:', JSON.stringify(status));
         const missing = HC_READ_TYPES.filter((t) => !status.readAuthorized.includes(t));
-        return { granted: missing.length === 0, missing };
-    } catch {
+        // Only heartRate is required — others are nice-to-have
+        const granted = status.readAuthorized.includes('heartRate');
+        return { granted, missing };
+    } catch (err) {
+        console.error('[HC] requestAuthorization error:', err);
         return { granted: false, missing: HC_READ_TYPES };
     }
 }
 
 /**
  * Check current permission status without prompting the user.
+ * Only heartRate is REQUIRED — others are optional.
  * @returns {Promise<{ granted: boolean, missing: string[] }>}
  */
 export async function checkPermissions() {
     try {
         const status = await Health.checkAuthorization({ read: HC_READ_TYPES });
+        console.log('[HC] checkAuthorization result:', JSON.stringify(status));
         const missing = HC_READ_TYPES.filter((t) => !status.readAuthorized.includes(t));
-        return { granted: missing.length === 0, missing };
-    } catch {
+        const granted = status.readAuthorized.includes('heartRate');
+        return { granted, missing };
+    } catch (err) {
+        console.error('[HC] checkAuthorization error:', err);
         return { granted: false, missing: HC_READ_TYPES };
     }
 }
@@ -152,6 +161,8 @@ export async function checkPermissions() {
  * }>}
  */
 export async function querySession(startTimestamp, endTimestamp) {
+    const durationMins = ((new Date(endTimestamp) - new Date(startTimestamp)) / 60000).toFixed(1);
+    console.log(`[HC] querySession window: ${startTimestamp} → ${endTimestamp} (${durationMins} min)`);
     const opts = { startDate: startTimestamp, endDate: endTimestamp, ascending: true, limit: 2000 };
 
     const [hrResult, hrvResult, spo2Result, respResult] = await Promise.allSettled([
@@ -161,10 +172,23 @@ export async function querySession(startTimestamp, endTimestamp) {
         Health.readSamples({ ...opts, dataType: 'respiratoryRate' }),
     ]);
 
-    const toSeries = (result) =>
-        result.status === 'fulfilled'
-            ? result.value.samples.map((s) => ({ timestamp: s.startDate, value: s.value }))
-            : [];
+    // Log raw results for debugging HC issues
+    for (const [name, result] of [['HR', hrResult], ['HRV', hrvResult], ['SpO2', spo2Result], ['Resp', respResult]]) {
+        if (result.status === 'fulfilled') {
+            const n = result.value?.samples?.length ?? result.value?.length ?? 0;
+            console.log(`[HC]   ${name}: ${n} samples`);
+        } else {
+            console.warn(`[HC]   ${name}: REJECTED —`, result.reason);
+        }
+    }
+
+    const toSeries = (result) => {
+        if (result.status !== 'fulfilled') return [];
+        // Handle both { samples: [...] } and direct array responses
+        const samples = result.value?.samples ?? result.value ?? [];
+        if (!Array.isArray(samples)) return [];
+        return samples.map((s) => ({ timestamp: s.startDate, value: s.value }));
+    };
 
     return {
         hr:   toSeries(hrResult),

@@ -152,7 +152,7 @@ src/
     date-helpers.js             # formatDuration, formatTime, isSameDay, computeStreak, getLast30DaysData
     csv.js                      # parseCSV / toCSV helpers
 public/
-  service-worker.js             # Offline cache (CACHE_NAME: meditation-timer-v12)
+  service-worker.js             # Offline cache (CACHE_NAME: meditation-timer-v21)
   manifest.json                 # PWA manifest
 www/                            # Vite build output — Capacitor webDir. Never edit directly.
 android/                        # Capacitor Android wrapper project
@@ -168,7 +168,7 @@ android/                        # Capacitor Android wrapper project
 npm test
 ```
 
-Runs 101 Vitest unit tests covering:
+Runs 112 Vitest unit tests covering:
 - Date helpers and CSV utilities
 - Storage migration (v1 → v2)
 - Timer wall-clock accuracy: screen-off throttling, pause/resume, gong catch-up
@@ -192,7 +192,7 @@ After each session the app runs `analyzeSession(telemetry)` on the biometric tim
 
 **Settle time** — the first timestamp where the 2-min rolling HR average drops below the opening HR and stays there. Shown as a vertical line on the HR chart.
 
-**Respiration from HR (RSA)** — heart rate rises on inhale and falls on exhale (respiratory sinus arrhythmia). The engine resamples HR to 4 Hz, applies a 0.05–0.4 Hz bandpass filter, and counts zero-crossings to find breath rate. Works at meditation breathing rates (3–8 br/min).
+**Respiration from HR (RSA)** — heart rate rises on inhale and falls on exhale (respiratory sinus arrhythmia). The engine resamples HR to uniform 4 Hz, removes baseline drift (25 s moving average), then finds the dominant oscillation frequency via DFT (Hanning-windowed) with parabolic interpolation in the 0.05–0.6 Hz respiratory band (3–36 br/min). This spectral approach detects breathing rate regardless of RSA amplitude — critical for sparse, pre-averaged Health Connect data where the oscillation may be < 1 bpm.
 
 **Session quality** — classified as Deep, Restless, or Somnolent based on settle time, HR variability, respiration stability, and torpor flags.
 
@@ -219,7 +219,7 @@ When changing `src/` JS, CSS, or HTML, bump **two** things:
 
 Vite handles JS/CSS cache-busting automatically via content hashes — no manual query-param bumping needed.
 
-**Current:** `APP_VERSION = 'v7.2'`, `CACHE_NAME = 'meditation-timer-v12'`
+**Current:** `APP_VERSION = 'v7.11'`, `CACHE_NAME = 'meditation-timer-v21'`
 
 > **Why this matters on device:** The service worker uses a cache-first strategy and caches `index.html` in the WebView. The SW stays alive across APK reinstalls. If `CACHE_NAME` is not bumped, the SW serves the old cached `index.html` and UI changes appear to have no effect — even though `npm run dev` shows them correctly. Bumping `CACHE_NAME` forces the SW to delete the old cache on next activate.
 
