@@ -98,14 +98,18 @@ export function extractRespirationFromHR(hrSeries, windowSeconds = 60) {
 }
 
 /**
- * Core RSA respiration extraction from any uniformly-sampled scalar time-series.
+ * Core RSA respiration extraction from any scalar time-series.
  *
  * Algorithm:
  * 1. Resample to uniform 4 Hz via linear interpolation
- * 2. Bandpass (0.04–0.5 Hz) using two centered moving averages:
- *    low-pass (2 s window) then subtract baseline (25 s window)
- * 3. Sliding 60 s window: count upward zero crossings = breaths
+ * 2. Remove baseline drift (25 s centered moving average)
+ * 3. Sliding 60 s window: find dominant frequency in respiratory band
+ *    via DFT with Hanning window + parabolic interpolation
  * 4. Return a reading every 30 s
+ *
+ * Previous approach (zero-crossing counting) undercounted when RSA amplitude
+ * was low — common with sparse, pre-averaged Health Connect HR data.
+ * Spectral peak detection finds the dominant oscillation regardless of amplitude.
  *
  * @param {Array<{timestamp: string, value: number}>} series
  * @param {number} windowSeconds
@@ -123,25 +127,27 @@ function _extractRespiration(series, windowSeconds) {
 
     if (totalMs < windowSeconds * 1000) return [];
 
+    // Nyquist guard: reject data too sparse for RSA extraction
+    const effectiveRate = computeEffectiveSampleRate(series);
+    if (effectiveRate < 0.1) return [];
+
     // Step 1: Resample to uniform 4 Hz
     const uniform = _resampleUniform(series, startMs, totalMs, DT_MS);
     if (uniform.length < windowSeconds * RATE) return [];
 
-    // Step 2: Bandpass via symmetric centered moving averages
-    const LP_WIN = Math.max(2, Math.round(2  * RATE));  // 2 s  → passes ≤ ~0.5 Hz
-    const HP_WIN = Math.max(2, Math.round(25 * RATE));  // 25 s → removes < ~0.04 Hz baseline
-    const lp      = _movingAvg(uniform, LP_WIN);
-    const baseline = _movingAvg(lp,     HP_WIN);
-    const bp       = lp.map((v, i) => v - baseline[i]);
+    // Step 2: Remove baseline drift (25 s centered moving average)
+    const HP_WIN = Math.max(2, Math.round(25 * RATE));
+    const baseline = _movingAvg(uniform, HP_WIN);
+    const detrended = uniform.map((v, i) => v - baseline[i]);
 
-    // Step 3: Sliding window — upward zero crossings = breaths
+    // Step 3: Sliding window — dominant frequency via DFT in respiratory band
     const winSamples  = windowSeconds * RATE;  // 240 at 4 Hz / 60 s
     const stepSamples = Math.round(RATE * 30); // step 30 s = 120 samples
     const result = [];
 
-    for (let start = 0; start + winSamples <= bp.length; start += stepSamples) {
-        const crossings = _countUpwardZeroCrossings(bp, start, start + winSamples);
-        const bpm = parseFloat(((crossings / windowSeconds) * 60).toFixed(1));
+    for (let start = 0; start + winSamples <= detrended.length; start += stepSamples) {
+        const freq = _dominantRespFrequency(detrended, start, start + winSamples, RATE);
+        const bpm = parseFloat((freq * 60).toFixed(1));
         result.push({
             timestamp: new Date(startMs + (start / RATE) * 1000).toISOString(),
             breathsPerMinute: bpm,
@@ -255,11 +261,28 @@ export function analyzeSession(telemetry) {
     // 1. Direct respiratory rate from Health Connect (resp field)
     // 2. RSA extraction from dense RR intervals (mock/raw HRV)
     // 3. RSA extraction from HR bpm (fallback for real data without raw RR)
-    const respiration = resp.length
-        ? resp.map((p) => ({ timestamp: p.timestamp, breathsPerMinute: p.value }))
-        : hrv.length >= 10
-            ? extractRespirationFromHRV(hrv)
-            : extractRespirationFromHR(hr);
+    let respirationSource = 'insufficient_data';
+    let respirationConfidence = 'none';
+    let respiration;
+
+    if (resp.length) {
+        respiration = resp.map((p) => ({ timestamp: p.timestamp, breathsPerMinute: p.value }));
+        respirationSource = 'health_connect_direct';
+        respirationConfidence = 'high';
+    } else if (hrv.length >= 10) {
+        respiration = extractRespirationFromHRV(hrv);
+        if (respiration.length) {
+            respirationSource = 'rsa_hrv';
+            respirationConfidence = 'medium';
+        }
+    } else {
+        respiration = extractRespirationFromHR(hr);
+        if (respiration.length) {
+            respirationSource = 'rsa_hr';
+            respirationConfidence = 'low';
+        }
+    }
+    if (!respiration) respiration = [];
     const tempAnalysis = analyzeSkinTemperature(temp);
 
     // Respiration stats
@@ -291,6 +314,8 @@ export function analyzeSession(telemetry) {
             minimum: minResp,
             breathlessPeriodsCount: breathlessPeriods.length,
             breathlessTotalSeconds: breathlessPeriods.length * 30, // step = 30 s
+            source: respirationSource,
+            confidence: respirationConfidence,
         },
         skinTemp: tempAnalysis,
         spo2: {
@@ -299,10 +324,34 @@ export function analyzeSession(telemetry) {
             torpidFlag: torpor.torpidFlag,
             torpidPeriods: torpor.periods,
         },
+        telemetryDiagnostics: {
+            sampleCounts: {
+                hr: hr.length, hrv: hrv.length, spo2: spo2.length,
+                resp: resp.length, temp: temp.length,
+            },
+            effectiveRates: {
+                hr:  computeEffectiveSampleRate(hr),
+                hrv: computeEffectiveSampleRate(hrv),
+            },
+        },
         sessionQuality: null,
     };
     insights.sessionQuality = classifySession(insights);
     return insights;
+}
+
+/**
+ * Compute effective sample rate in Hz from a time-series.
+ * @param {Array<{timestamp: string}>} series
+ * @returns {number} Hz (0 if fewer than 2 samples)
+ */
+export function computeEffectiveSampleRate(series) {
+    if (!series || series.length < 2) return 0;
+    const startMs = new Date(series[0].timestamp).getTime();
+    const endMs   = new Date(series[series.length - 1].timestamp).getTime();
+    const durationSecs = (endMs - startMs) / 1000;
+    if (durationSecs <= 0) return 0;
+    return (series.length - 1) / durationSecs;
 }
 
 // ─── Private helpers ──────────────────────────────────────────────────────────
@@ -352,14 +401,77 @@ function _movingAvg(arr, win) {
 }
 
 /**
- * Count upward zero crossings (negative → positive) in arr[start..end).
+ * Find the dominant frequency in the respiratory band (0.05–0.6 Hz) via DFT.
+ * Uses Hanning window to reduce spectral leakage and parabolic interpolation
+ * for sub-bin frequency accuracy.
+ *
+ * Only computes DFT at ~30 bins in the respiratory range — O(N × bins) per window.
+ *
+ * @param {number[]} arr - detrended signal
+ * @param {number} start - window start index
+ * @param {number} end - window end index (exclusive)
+ * @param {number} sampleRate - Hz
+ * @returns {number} dominant frequency in Hz (0 if none found)
  */
-function _countUpwardZeroCrossings(arr, start, end) {
-    let count = 0;
-    for (let i = start + 1; i < end; i++) {
-        if (arr[i - 1] <= 0 && arr[i] > 0) count++;
+function _dominantRespFrequency(arr, start, end, sampleRate) {
+    const N = end - start;
+    const freqRes = sampleRate / N;
+
+    // Respiratory band: 0.05–0.6 Hz → 3–36 breaths/min
+    const RESP_LO = 0.05;
+    const RESP_HI = 0.6;
+    const kMin = Math.max(1, Math.ceil(RESP_LO / freqRes));
+    const kMax = Math.min(Math.floor(N / 2) - 1, Math.floor(RESP_HI / freqRes));
+    if (kMin > kMax) return 0;
+
+    // Precompute mean-removed, Hanning-windowed segment
+    let mean = 0;
+    for (let i = start; i < end; i++) mean += arr[i];
+    mean /= N;
+
+    const w = new Array(N);
+    for (let n = 0; n < N; n++) {
+        const hann = 0.5 * (1 - Math.cos((2 * Math.PI * n) / (N - 1)));
+        w[n] = (arr[start + n] - mean) * hann;
     }
-    return count;
+
+    // DFT at bins kMin-1 .. kMax+1 (extra margin for parabolic interpolation)
+    const lo = Math.max(0, kMin - 1);
+    const hi = Math.min(Math.floor(N / 2), kMax + 1);
+    const power = new Array(hi - lo + 1);
+
+    for (let k = lo; k <= hi; k++) {
+        let re = 0, im = 0;
+        const omega = (2 * Math.PI * k) / N;
+        for (let n = 0; n < N; n++) {
+            re += w[n] * Math.cos(omega * n);
+            im -= w[n] * Math.sin(omega * n);
+        }
+        power[k - lo] = re * re + im * im;
+    }
+
+    // Find peak bin in respiratory band
+    let maxP = 0, peakK = kMin;
+    for (let k = kMin; k <= kMax; k++) {
+        if (power[k - lo] > maxP) {
+            maxP = power[k - lo];
+            peakK = k;
+        }
+    }
+
+    // Parabolic interpolation for sub-bin accuracy
+    if (peakK > lo && peakK < hi && maxP > 0) {
+        const pL = power[peakK - 1 - lo];
+        const pC = power[peakK - lo];
+        const pR = power[peakK + 1 - lo];
+        const denom = 2 * pC - pL - pR;
+        if (denom > 0) {
+            const delta = 0.5 * (pR - pL) / denom;
+            return (peakK + delta) * freqRes;
+        }
+    }
+
+    return peakK * freqRes;
 }
 
 /**

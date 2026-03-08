@@ -24,7 +24,7 @@ import { analyzeSession } from './bio/bio-math-engine.js';
 import { PROFILE_RESTLESS, PROFILE_DEEP, PROFILE_SOMNOLENT } from './bio/mock-data.js';
 import * as healthConnect from './bio/health-connect-service.js';
 
-const APP_VERSION = 'v7.2';
+const APP_VERSION = 'v7.12';
 
 // ── Bio Dev Panel ────────────────────────────────────────────────────────────
 
@@ -204,13 +204,6 @@ async function boot() {
     // 6. Version footer
     const footer = document.getElementById('versionFooter');
     if (footer) footer.textContent = APP_VERSION;
-
-    // 6a. DEV button — visible only on localhost (dev/AVD)
-    const devBtn = document.getElementById('devBtn');
-    if (devBtn && location.hostname === 'localhost') {
-        devBtn.hidden = false;
-        devBtn.addEventListener('click', () => _toggleDevPanel(storage));
-    }
 
     // 7. Register service worker
     if ('serviceWorker' in navigator) {

@@ -52,6 +52,7 @@
     <!-- Required for Health Connect intent resolution on Android 11+ -->
     <queries>
         <package android:name="com.google.android.apps.healthdata" />
+        <package android:name="com.samsung.android.health.connect" />
         <intent>
             <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
         </intent>

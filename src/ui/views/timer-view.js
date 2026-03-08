@@ -84,77 +84,137 @@ async function _attachTelemetry(session) {
     }
 }
 
-async function _attachMockTelemetry(session) {
+async function _attachMockTelemetry(session, reason = 'Web browser') {
     const startMs   = new Date(session.startTimestamp).getTime();
     const telemetry = generateMockTelemetry(startMs, session.duration);
     const insights  = analyzeSession(telemetry);
+    // Strip session quality from mock data — it would be misleading
+    insights.sessionQuality = null;
     await _storage.saveTelemetry(session.id, telemetry);
     session.hasTelemetry = true;
     session.insights = insights;
+    session.telemetrySource = 'mock';
+    session.telemetryReason = reason;
     await _storage.saveSession(session);
+    console.log('[telemetry] Mock data attached. Reason:', reason);
+    _showTelemetryToast('Mock Data', reason);
 }
 
 async function _attachHCTelemetry(session) {
+    console.log('[HC] Starting telemetry acquisition…');
+
     const availability = await healthConnect.checkAvailability();
+    console.log('[HC] availability:', availability);
     if (availability !== 'available') {
+        const reason = availability === 'notInstalled' ? 'HC not installed' : 'HC not supported';
         if (availability === 'notInstalled' && !localStorage.getItem('hc_banner_shown')) {
             _showHCBanner();
             localStorage.setItem('hc_banner_shown', '1');
         }
-        await _attachMockTelemetry(session);
+        await _attachMockTelemetry(session, reason);
         return;
     }
 
-    // Skip if user previously chose not to grant permissions
-    if (localStorage.getItem('hc_permission_declined')) {
-        await _attachMockTelemetry(session);
-        return;
-    }
+    let { granted, missing } = await healthConnect.checkPermissions();
+    console.log('[HC] checkPermissions:', JSON.stringify({ granted, missing }));
 
-    let { granted } = await healthConnect.checkPermissions();
     if (!granted) {
         const allowed = await _showHCPermissionModal();
         if (!allowed) {
-            localStorage.setItem('hc_permission_declined', '1');
-            await _attachMockTelemetry(session);
+            console.log('[HC] User skipped permissions for this session');
+            await _attachMockTelemetry(session, 'Permissions skipped');
             return;
         }
-        ({ granted } = await healthConnect.requestPermissions());
+        ({ granted, missing } = await healthConnect.requestPermissions());
+        console.log('[HC] requestPermissions result:', JSON.stringify({ granted, missing }));
         if (!granted) {
-            await _attachMockTelemetry(session);
+            await _attachMockTelemetry(session, `Permissions denied: ${missing.join(', ')}`);
             return;
         }
     }
 
-    _setHCStatus('Fetching health data…');
+    // Poll HC with retries — wearables sync data on ~15 min intervals
+    const MAX_ATTEMPTS = 8;
+    const POLL_INTERVAL = 15_000;
+    const { overlay, statusEl, cancelPromise } = _showHCSyncOverlay();
+    let cancelled = false;
+    cancelPromise.then(() => { cancelled = true; });
+
     try {
-        const telemetry = await healthConnect.querySession(session.startTimestamp, session.endTimestamp);
-        if (!telemetry.hr?.length) {
-            await _attachMockTelemetry(session);
-            return;
+        for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+            if (cancelled) break;
+
+            statusEl.textContent = `Waiting for watch sync… (${attempt}/${MAX_ATTEMPTS})`;
+            console.log(`[HC] Query attempt ${attempt}/${MAX_ATTEMPTS}…`);
+
+            const telemetry = await healthConnect.querySession(session.startTimestamp, session.endTimestamp);
+            console.log(`[HC] Attempt ${attempt} — HR: ${telemetry.hr?.length}, HRV: ${telemetry.hrv?.length},`,
+                `SpO2: ${telemetry.spo2?.length}, Resp: ${telemetry.resp?.length}`);
+
+            if (telemetry.hr?.length) {
+                overlay.remove();
+                const insights = analyzeSession(telemetry);
+                await _storage.saveTelemetry(session.id, telemetry);
+                session.hasTelemetry = true;
+                session.insights = insights;
+                session.telemetrySource = 'health_connect';
+                session.telemetryReason = `HR: ${telemetry.hr.length}, HRV: ${telemetry.hrv?.length || 0}, SpO2: ${telemetry.spo2?.length || 0}`;
+                await _storage.saveSession(session);
+                console.log('[HC] Telemetry attached successfully');
+                _showTelemetryToast('Health Connect', session.telemetryReason);
+                return;
+            }
+
+            if (attempt < MAX_ATTEMPTS && !cancelled) {
+                await Promise.race([_delay(POLL_INTERVAL), cancelPromise]);
+            }
         }
-        const insights = analyzeSession(telemetry);
-        await _storage.saveTelemetry(session.id, telemetry);
-        session.hasTelemetry = true;
-        session.insights = insights;
-        await _storage.saveSession(session);
-    } finally {
-        _setHCStatus('');
+
+        overlay.remove();
+        await _attachMockTelemetry(session, 'No HR data from Health Connect');
+    } catch (err) {
+        overlay.remove();
+        throw err;
     }
 }
 
+function _delay(ms) { return new Promise((r) => setTimeout(r, ms)); }
+
 // ── HC UI helpers ──────────────────────────────────────────────────────────
 
-let _hcStatusEl = null;
+function _showHCSyncOverlay() {
+    const overlay = document.createElement('div');
+    overlay.className = 'hc-sync-overlay';
 
-function _setHCStatus(msg) {
-    if (!msg) { _hcStatusEl?.remove(); _hcStatusEl = null; return; }
-    if (!_hcStatusEl) {
-        _hcStatusEl = document.createElement('div');
-        _hcStatusEl.className = 'hc-status';
-        document.querySelector('.controls')?.after(_hcStatusEl);
-    }
-    _hcStatusEl.textContent = msg;
+    let resolveCancel;
+    const cancelPromise = new Promise((r) => { resolveCancel = r; });
+
+    const statusEl = document.createElement('div');
+    statusEl.className = 'hc-sync-status';
+    statusEl.textContent = 'Connecting to Health Connect…';
+
+    const hint = document.createElement('div');
+    hint.className = 'hc-sync-hint';
+    hint.textContent = 'Open your wearable app to force a sync';
+
+    const skipBtn = document.createElement('button');
+    skipBtn.className = 'btn secondary hc-sync-skip';
+    skipBtn.textContent = 'Skip — Use Mock Data';
+    skipBtn.addEventListener('click', () => resolveCancel());
+
+    overlay.append(statusEl, hint, skipBtn);
+    document.querySelector('.controls')?.after(overlay);
+
+    return { overlay, statusEl, cancelPromise };
+}
+
+function _showTelemetryToast(source, reason) {
+    const toast = document.createElement('div');
+    toast.className = `telemetry-toast telemetry-toast--${source === 'Health Connect' ? 'hc' : 'mock'}`;
+    toast.textContent = `${source}: ${reason}`;
+    document.getElementById('app')?.appendChild(toast);
+    setTimeout(() => { toast.classList.add('telemetry-toast--fade'); }, 3000);
+    setTimeout(() => toast.remove(), 3600);
 }
 
 function _showHCBanner() {
