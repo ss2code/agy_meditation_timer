@@ -24,7 +24,7 @@ import { analyzeSession } from './bio/bio-math-engine.js';
 import { PROFILE_RESTLESS, PROFILE_DEEP, PROFILE_SOMNOLENT } from './bio/mock-data.js';
 import * as healthConnect from './bio/health-connect-service.js';
 
-const APP_VERSION = 'v7.12';
+const APP_VERSION = 'v7.13';
 
 // ── Bio Dev Panel ────────────────────────────────────────────────────────────
 

@@ -16,7 +16,7 @@ export class Gong {
     }
 
     _createGongBuffer() {
-        const duration = 10.0;
+        const duration = 15.0; // longer sustain
         const sampleRate = this.ctx.sampleRate;
         const length = sampleRate * duration;
         const buffer = this.ctx.createBuffer(1, length, sampleRate);
@@ -31,11 +31,11 @@ export class Gong {
             let sample = 0;
 
             harmonics.forEach((h, idx) => {
-                const amp = weights[idx] * Math.exp(-0.5 * t);
+                const amp = weights[idx] * Math.exp(-0.3 * t); // slower decay
                 sample += amp * Math.sin(2 * Math.PI * baseFreq * h * t);
             });
 
-            const envelope = t < 0.05 ? t / 0.05 : Math.exp(-0.2 * (t - 0.05));
+            const envelope = t < 0.05 ? t / 0.05 : Math.exp(-0.1 * (t - 0.05)); // gentle fade
             data[i] = sample * envelope * 0.5;
         }
 
@@ -51,11 +51,11 @@ export class Gong {
         const filter = this.ctx.createBiquadFilter();
         filter.type = 'lowpass';
         filter.frequency.setValueAtTime(800, time);
-        filter.frequency.exponentialRampToValueAtTime(100, time + 9);
+        filter.frequency.exponentialRampToValueAtTime(100, time + 14);
 
         const gain = this.ctx.createGain();
         gain.gain.setValueAtTime(1.5, time);
-        gain.gain.exponentialRampToValueAtTime(0.001, time + 10);
+        gain.gain.exponentialRampToValueAtTime(0.001, time + 15);
 
         source.connect(filter);
         filter.connect(gain);
@@ -64,7 +64,7 @@ export class Gong {
     }
 
     /**
-     * Play N gong strikes, spaced 5s apart.
+     * Play N gong strikes, spaced 7s apart.
      * Async so it can await AudioContext.resume() on mobile/Android
      * where the context may be suspended after inactivity.
      * @param {number} times
@@ -81,7 +81,7 @@ export class Gong {
         }
         const now = this.ctx.currentTime;
         for (let i = 0; i < times; i++) {
-            this._playOnce(now + i * 5.0);
+            this._playOnce(now + i * 7.0);
         }
     }
 }

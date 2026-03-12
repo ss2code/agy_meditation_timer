@@ -204,6 +204,36 @@ describe('wall-clock timer', () => {
         expect(timer.elapsedTime).toBeLessThanOrEqual(363);
     });
 
+    it('fires 2 strikes at the 30-minute mark', () => {
+        timer.startTimer();
+        advanceWallClock(31 * 60 * 1000); // past 30-min mark
+        const calls = timer.gong.play.mock.calls.map(c => c[0]);
+        // t=900 → play(1), t=1800 → play(2)
+        expect(calls).toContain(2);
+    });
+
+    it('fires 3 strikes at the 45-minute mark', () => {
+        timer.startTimer();
+        advanceWallClock(46 * 60 * 1000);
+        const calls = timer.gong.play.mock.calls.map(c => c[0]);
+        expect(calls).toContain(3);
+    });
+
+    it('settling gong fires exactly 1 strike at t=15', () => {
+        timer.startTimer();
+        advanceWallClock(16_000); // just past t=15
+        // Only the settling gong should have fired
+        expect(timer.gong.play).toHaveBeenCalledTimes(1);
+        expect(timer.gong.play).toHaveBeenCalledWith(1);
+    });
+
+    it('handleVisibilityHidden schedules background gongs when running', () => {
+        timer.startTimer();
+        advanceWallClock(20_000); // past t=15
+        // Should not throw — background-gong is a no-op in test env
+        expect(() => timer.handleVisibilityHidden()).not.toThrow();
+    });
+
     it('finishTimer resets all state for a fresh session', () => {
         timer.startTimer();
         advanceWallClock(30_000);

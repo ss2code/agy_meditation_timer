@@ -6,6 +6,7 @@
 
 import { Gong } from './gong.js';
 import { formatTime } from '../utils/date-helpers.js';
+import { scheduleBackgroundGongs, cancelBackgroundGongs } from './background-gong.js';
 
 export const gong = new Gong();
 
@@ -104,6 +105,8 @@ export function pauseTimer() {
     _syncElapsed();
     _accumulatedBeforePause = elapsedTime;
     _resumeWallTime = null;
+
+    cancelBackgroundGongs();
 }
 
 /**
@@ -114,6 +117,8 @@ export function finishTimer() {
     // Final sync before stopping
     _syncElapsed();
     pauseTimer();
+
+    cancelBackgroundGongs();
 
     if (elapsedTime >= 10 && onSessionSaveCallback) {
         onSessionSaveCallback({
@@ -132,15 +137,25 @@ export function finishTimer() {
 
 /**
  * Called when the page becomes visible again (e.g. screen unlock).
- * Forces an immediate elapsed-time sync and UI update.
+ * Cancels background notifications (Web Audio takes over) and syncs elapsed time.
  */
 export function handleVisibilityResume() {
     if (!timerId) return;
-    const prevElapsed = elapsedTime;
+    cancelBackgroundGongs();
     _syncElapsed();
     if (onTickCallback) onTickCallback(elapsedTime);
     _checkGongs(_lastGongCheckTime, elapsedTime);
     _lastGongCheckTime = elapsedTime;
+}
+
+/**
+ * Called when the page is hidden (screen locked / app backgrounded).
+ * Schedules local notifications so gongs fire even without Web Audio.
+ */
+export function handleVisibilityHidden() {
+    if (!timerId) return;
+    _syncElapsed();
+    scheduleBackgroundGongs(elapsedTime);
 }
 
 /**
@@ -165,11 +180,13 @@ export function getFormattedTime() {
     return formatTime(elapsedTime);
 }
 
-// Auto-sync on visibility change (screen unlock / app resume)
+// Auto-sync and background gong management on visibility change
 if (typeof document !== 'undefined') {
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible') {
             handleVisibilityResume();
+        } else {
+            handleVisibilityHidden();
         }
     });
 }
