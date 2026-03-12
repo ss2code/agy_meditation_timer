@@ -1,6 +1,6 @@
 // service-worker.js — PWA offline cache (Vite build: dynamic cache strategy)
 // Since Vite output has hashed filenames, we cache dynamically on first visit.
-const CACHE_NAME = 'meditation-timer-v26';
+const CACHE_NAME = 'meditation-timer-v27';
 
 self.addEventListener('install', (e) => {
     self.skipWaiting();

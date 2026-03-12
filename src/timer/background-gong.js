@@ -84,21 +84,37 @@ export function computeGongSchedule(elapsedSec, nowMs) {
 }
 
 let _scheduledIds = [];
+let _permissionGranted = false;
+
+/**
+ * Pre-load the native plugin and request notification permission.
+ * Call this at session start while the app is definitely in the foreground,
+ * so the async chain completes reliably and permission dialogs can show.
+ * Returns true if ready to schedule.
+ */
+export async function initBackgroundGongs() {
+    const plugin = await _getPlugin();
+    if (!plugin) return false;
+
+    const { display } = await plugin.requestPermissions();
+    _permissionGranted = display === 'granted';
+    return _permissionGranted;
+}
 
 /**
  * Schedule local notifications for all future gong events.
- * Silently no-ops on web.
+ * Silently no-ops on web or if permission was not granted via initBackgroundGongs().
+ *
+ * The async chain here is intentionally minimal (cancel + schedule) so it has
+ * the best chance of completing during visibilitychange → hidden before
+ * Android suspends the WebView.
  *
  * @param {number} elapsedSec Current session elapsed time in seconds
  */
 export async function scheduleBackgroundGongs(elapsedSec) {
-    const plugin = await _getPlugin();
-    if (!plugin) return;
+    if (!_plugin || !_permissionGranted) return;
 
     await cancelBackgroundGongs();
-
-    const { display } = await plugin.requestPermissions();
-    if (display !== 'granted') return;
 
     const schedule = computeGongSchedule(elapsedSec, Date.now());
     if (schedule.length === 0) return;
@@ -115,7 +131,7 @@ export async function scheduleBackgroundGongs(elapsedSec) {
         autoCancel: true,
     }));
 
-    await plugin.schedule({ notifications });
+    await _plugin.schedule({ notifications });
     _scheduledIds = schedule.map(e => e.id);
 }
 
@@ -154,9 +170,8 @@ export async function requestExactAlarmSetting() {
  * Silently no-ops on web.
  */
 export async function cancelBackgroundGongs() {
-    const plugin = await _getPlugin();
-    if (!plugin || _scheduledIds.length === 0) return;
+    if (!_plugin || _scheduledIds.length === 0) return;
 
-    await plugin.cancel({ notifications: _scheduledIds.map(id => ({ id })) });
+    await _plugin.cancel({ notifications: _scheduledIds.map(id => ({ id })) });
     _scheduledIds = [];
 }

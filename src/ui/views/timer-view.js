@@ -6,7 +6,7 @@ import { navigateTo } from '../router.js';
 import { analyzeSession } from '../../bio/bio-math-engine.js';
 import { generateMockTelemetry } from '../../bio/mock-data.js';
 import * as healthConnect from '../../bio/health-connect-service.js';
-import { checkExactAlarmPermission, requestExactAlarmSetting } from '../../timer/background-gong.js';
+import { checkExactAlarmPermission, requestExactAlarmSetting, initBackgroundGongs, scheduleBackgroundGongs } from '../../timer/background-gong.js';
 
 let _storage = null;
 let _timerDisplay = null;
@@ -258,7 +258,7 @@ async function _checkHCAvailabilityOnce() {
     }
 }
 
-function _onStart() {
+async function _onStart() {
     startTimer();
     _checkExactAlarmOnce();
     _startBtn.disabled = true;
@@ -269,6 +269,13 @@ function _onStart() {
     clearInterval(_dateInterval);
     _dateInterval = null;
     _showStartTime();
+
+    // Pre-load plugin + request permission while in foreground, then schedule
+    // all future gong notifications proactively. This avoids the race condition
+    // where visibilitychange → hidden fires but the async chain gets killed
+    // by Android WebView suspension before plugin.schedule() completes.
+    await initBackgroundGongs();
+    scheduleBackgroundGongs(0);
 }
 
 async function _checkExactAlarmOnce() {
