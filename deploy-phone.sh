@@ -140,6 +140,9 @@ info "Force-stopping any running instance..."
 info "Installing APK on $DEVICE..."
 "$ADB" -s "$DEVICE" install -r "$APK" 2>&1 | grep -v "^$"
 
+info "Clearing app data (WebView SW cache, localStorage)..."
+"$ADB" -s "$DEVICE" shell pm clear "$APP_ID" 2>/dev/null || true
+
 info "Launching $APP_ID..."
 "$ADB" -s "$DEVICE" shell am start -n "$APP_ID/.MainActivity"
 

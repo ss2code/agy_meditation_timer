@@ -1,11 +1,12 @@
 // timer-view.js — Timer screen: display, controls, mini stats, recent sessions
 
-import { formatTime, formatDuration, formatHeaderDate, isSameDay, getWeekStart } from '../../utils/date-helpers.js';
+import { formatTime, formatDuration, formatHeaderDate, isSameDay, getWeekStart, getLast7DaysCounts } from '../../utils/date-helpers.js';
 import { startTimer, pauseTimer, finishTimer, isRunning, onTick, onSessionSave, sessionStartTimestamp } from '../../timer/timer.js';
 import { navigateTo } from '../router.js';
 import { analyzeSession } from '../../bio/bio-math-engine.js';
 import { generateMockTelemetry } from '../../bio/mock-data.js';
 import * as healthConnect from '../../bio/health-connect-service.js';
+import { checkExactAlarmPermission, requestExactAlarmSetting } from '../../timer/background-gong.js';
 
 let _storage = null;
 let _timerDisplay = null;
@@ -259,6 +260,7 @@ async function _checkHCAvailabilityOnce() {
 
 function _onStart() {
     startTimer();
+    _checkExactAlarmOnce();
     _startBtn.disabled = true;
     _pauseBtn.disabled = false;
     _finishBtn.disabled = false;
@@ -267,6 +269,29 @@ function _onStart() {
     clearInterval(_dateInterval);
     _dateInterval = null;
     _showStartTime();
+}
+
+async function _checkExactAlarmOnce() {
+    if (!window.Capacitor?.isNativePlatform?.()) return;
+    if (document.querySelector('.exact-alarm-banner')) return;
+    const granted = await checkExactAlarmPermission();
+    if (granted) return;
+
+    const banner = document.createElement('div');
+    banner.className = 'exact-alarm-banner';
+    banner.innerHTML = `
+        <span>Gongs need Alarms &amp; Reminders permission to fire while screen is off.</span>
+        <div class="exact-alarm-banner-actions">
+            <button class="exact-alarm-fix">Fix</button>
+            <button class="exact-alarm-dismiss">✕</button>
+        </div>
+    `;
+    document.getElementById('app')?.prepend(banner);
+    banner.querySelector('.exact-alarm-fix').addEventListener('click', async () => {
+        banner.remove();
+        await requestExactAlarmSetting();
+    });
+    banner.querySelector('.exact-alarm-dismiss').addEventListener('click', () => banner.remove());
 }
 
 function _onPause() {
@@ -366,6 +391,22 @@ export async function renderStats() {
     if (_statToday) _statToday.textContent = formatDuration(todaySecs);
     if (_statWeek)  _statWeek.textContent  = formatDuration(weekSecs);
     if (_statMonth) _statMonth.textContent = formatDuration(monthSecs);
+
+    const weekDotsEl = document.getElementById('weekDots');
+    if (weekDotsEl) {
+        const DAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+        const dots = getLast7DaysCounts(sessions);
+        weekDotsEl.innerHTML = `<div class="week-dots">${
+            dots.map(({ count, isToday }, i) => {
+                const state = count === 0 ? '' : count === 1 ? ' week-dot--half' : ' week-dot--full';
+                const today = isToday ? ' week-dot--today' : '';
+                return `<div class="week-dot-col">
+                    <span class="week-dot${state}${today}"></span>
+                    <span class="week-dot-label${isToday ? ' week-dot-label--today' : ''}">${DAY_LABELS[i]}</span>
+                </div>`;
+            }).join('')
+        }</div>`;
+    }
 }
 
 function _qualityLabel(quality) {

@@ -98,6 +98,30 @@ export function computeStreak(sessions) {
 }
 
 /**
+ * Compute session counts for each day of the current week (Sun=0 … Sat=6).
+ * Index matches getDay() — Sunday is always first, Saturday last.
+ * @param {Array<{endTimestamp: string, startTimestamp: string}>} sessions
+ * @returns {Array<{count: number, isToday: boolean}>}
+ */
+export function getLast7DaysCounts(sessions) {
+    const now = new Date();
+    const todayDow = now.getDay(); // 0 = Sun, 6 = Sat
+    const weekSunday = new Date(now);
+    weekSunday.setDate(now.getDate() - todayDow);
+    weekSunday.setHours(0, 0, 0, 0);
+
+    return Array.from({ length: 7 }, (_, i) => {
+        const d = new Date(weekSunday);
+        d.setDate(weekSunday.getDate() + i);
+        const count = sessions.filter(s => {
+            const sd = new Date(s.endTimestamp || s.startTimestamp);
+            return isSameDay(sd, d);
+        }).length;
+        return { count, isToday: i === todayDow };
+    });
+}
+
+/**
  * Compute daily meditation minutes for the last N days (oldest first).
  * @param {Array} sessions
  * @param {number} [days=30]

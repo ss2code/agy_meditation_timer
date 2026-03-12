@@ -8,6 +8,7 @@ A biofeedback meditation timer that tracks sessions, plays gong sounds, and — 
 - **Gong sounds** synthesized in real-time via the Web Audio API (no audio files to download):
   - 1 strike at 15 s — "settling-in" cue
   - N strikes every 15 minutes — N = number of 15-min intervals completed (1 at 15 m, 2 at 30 m, etc.)
+  - **Works while the phone sleeps** — when the screen turns off, gongs are pre-scheduled as Android system notifications so they fire even in Doze mode (requires granting Alarms & Reminders permission on Android 13+; see below)
 - **Session history** grouped by date, with streak tracking and a 30-day bar chart
 - **Bio-insight analysis** after every session:
   - Heart-rate settle time (how long until HR stabilised)
@@ -36,6 +37,20 @@ A biofeedback meditation timer that tracks sessions, plays gong sounds, and — 
 The first time you finish a session on the Android app, a dialog asks you to allow Health Connect access. Tap **Allow**, then grant all requested permissions in the Health Connect screen that opens. If you tap **Skip**, you can re-enable later from the Health Connect system app.
 
 Your Galaxy Watch syncs to Samsung Health, which writes data to Health Connect. The app reads from Health Connect — it never talks directly to the watch.
+
+### Background gongs — Alarms & Reminders permission (Android 13+)
+
+Gongs fire at exact times even while the screen is off, using the Android alarm system. On **Android 13 and later**, the OS requires apps to be explicitly granted the *Alarms & Reminders* special permission — it is not granted automatically.
+
+When you tap **Start** for the first time, an orange banner appears at the top of the screen if this permission is missing:
+
+> *"Gongs need Alarms & Reminders permission to fire while screen is off."*
+
+Tap **Fix** and the Android settings page opens. Toggle **Meditation Timer** on, then return to the app. The banner will not reappear.
+
+On **Android 12** the permission is granted automatically on install — no action needed.
+
+If you skip the banner, gongs will still fire while the screen is on, and will catch up (play once) when you unlock the phone, but they will not ring at the correct times during screen-off.
 
 ---
 
@@ -128,6 +143,7 @@ src/
   timer/
     timer.js                    # Timer: wall-clock elapsed time (Date.now()), startTimer / pauseTimer / finishTimer / gong rules; visibilitychange sync for screen-unlock accuracy
     gong.js                     # Gong synthesizer: additive sine waves + Web Audio API envelopes
+    background-gong.js          # Background gong: schedules @capacitor/local-notifications when screen locks; cancels when screen unlocks (Web Audio takes over)
   storage/
     storage-interface.js        # Abstract base — all methods return Promises
     local-storage-adapter.js    # Browser/PWA storage (localStorage key: meditation_sessions_v2)
@@ -156,7 +172,7 @@ public/
   manifest.json                 # PWA manifest
 www/                            # Vite build output — Capacitor webDir. Never edit directly.
 android/                        # Capacitor Android wrapper project
-  app/src/main/AndroidManifest.xml   # Health Connect permissions declared here
+  app/src/main/AndroidManifest.xml   # Permissions: Health Connect, SCHEDULE_EXACT_ALARM (background gongs)
   variables.gradle              # SDK versions (compileSdk 36, minSdk 26, targetSdk 36)
 ```
 
@@ -168,13 +184,46 @@ android/                        # Capacitor Android wrapper project
 npm test
 ```
 
-Runs 112 Vitest unit tests covering:
+Runs 126 Vitest unit tests covering:
 - Date helpers and CSV utilities
 - Storage migration (v1 → v2)
 - Timer wall-clock accuracy: screen-off throttling, pause/resume, gong catch-up
+- Background gong schedule: notification timing, strike gaps, ID uniqueness
 - BioMathEngine: settle-time, RSA respiration, `extractRespirationFromHR`, skin temp friction, torpor detection, `classifySession`, `analyzeSession`
 
 Tests run in a Node.js environment (no browser, no Android required).
+
+### Testing background gongs on device
+
+Because this feature depends on the Android alarm system and Doze mode, it can only be meaningfully tested on a real device — not AVD or the web.
+
+**Quick end-to-end test (~5 seconds):**
+
+1. Deploy the APK to your phone and open the app.
+2. On your Mac, open `chrome://inspect` and select the app's WebView to get a DevTools console.
+3. Tap **Start** in the app.
+4. In the DevTools console run: `meditationDebug.setTime(895)` — the timer jumps to 14:55.
+5. **Immediately lock the phone** (press power button).
+6. Wait 5 seconds — the gong should play through the locked screen.
+
+For the 30-minute mark (2 strikes): use `meditationDebug.setTime(1795)` instead.
+
+**Instant diagnostic (no waiting):**
+
+Start a session, lock the screen, then run on your Mac:
+
+```bash
+adb -s <device-serial> shell dumpsys alarm | grep -A8 "com.shyamsuri.meditationtimer"
+```
+
+Check logcat for the plugin's fallback warning — its **absence** confirms exact alarms are being used:
+
+```bash
+adb -s <device-serial> logcat -s "Capacitor/LocalNotification" | grep -i "exact"
+```
+
+Before fix: `"Exact alarms not allowed in user settings. Notification scheduled with non-exact alarm."`
+After fix: no output.
 
 ---
 
@@ -243,7 +292,7 @@ When changing `src/` JS, CSS, or HTML, bump **two** things:
 
 Vite handles JS/CSS cache-busting automatically via content hashes — no manual query-param bumping needed.
 
-**Current:** `APP_VERSION = 'v7.11'`, `CACHE_NAME = 'meditation-timer-v21'`
+**Current:** `APP_VERSION = 'v7.16'`, `CACHE_NAME = 'meditation-timer-v26'`
 
 > **Why this matters on device:** The service worker uses a cache-first strategy and caches `index.html` in the WebView. The SW stays alive across APK reinstalls. If `CACHE_NAME` is not bumped, the SW serves the old cached `index.html` and UI changes appear to have no effect — even though `npm run dev` shows them correctly. Bumping `CACHE_NAME` forces the SW to delete the old cache on next activate.
 

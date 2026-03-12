@@ -120,6 +120,36 @@ export async function scheduleBackgroundGongs(elapsedSec) {
 }
 
 /**
+ * Check whether the app can schedule exact alarms (requires SCHEDULE_EXACT_ALARM on Android 12+).
+ * Returns true on web or pre-Android 12 (not applicable there).
+ * On Android 12+, returns false until the user grants the permission via Settings.
+ */
+export async function checkExactAlarmPermission() {
+    const plugin = await _getPlugin();
+    if (!plugin) return true;
+    try {
+        const result = await plugin.checkExactNotificationSetting();
+        return result.exact_alarm === 'granted';
+    } catch (e) {
+        return true; // older plugin version — assume OK
+    }
+}
+
+/**
+ * Open the Android "Alarms & Reminders" Settings page so the user can grant
+ * SCHEDULE_EXACT_ALARM.  No-op on web or pre-Android 12.
+ */
+export async function requestExactAlarmSetting() {
+    const plugin = await _getPlugin();
+    if (!plugin) return;
+    try {
+        await plugin.changeExactNotificationSetting();
+    } catch (e) {
+        console.warn('[background-gong] changeExactNotificationSetting failed:', e);
+    }
+}
+
+/**
  * Cancel all previously scheduled gong notifications.
  * Silently no-ops on web.
  */

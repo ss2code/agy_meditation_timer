@@ -39,6 +39,13 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Required for exact-alarm scheduling so gongs fire precisely while screen is off.
+         Android 12 (API 31–32): auto-granted on install.
+         Android 13+ (API 33+): user must grant via Settings → Special App Access → Alarms & Reminders.
+         Without this, canScheduleExactAlarms() returns false and the plugin falls back to
+         setAndAllowWhileIdle() which Doze mode batches, silencing 15-min/30-min gongs. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+
     <!-- Health Connect permissions (Phase 6) -->
     <uses-permission android:name="android.permission.health.READ_HEART_RATE"/>
     <uses-permission android:name="android.permission.health.READ_HEART_RATE_VARIABILITY_RMSSD"/>
