@@ -260,7 +260,6 @@ async function _checkHCAvailabilityOnce() {
 
 async function _onStart() {
     startTimer();
-    _checkExactAlarmOnce();
     _startBtn.disabled = true;
     _pauseBtn.disabled = false;
     _finishBtn.disabled = false;
@@ -270,12 +269,14 @@ async function _onStart() {
     _dateInterval = null;
     _showStartTime();
 
-    // Pre-load plugin + request permission while in foreground, then schedule
-    // all future gong notifications proactively. This avoids the race condition
-    // where visibilitychange → hidden fires but the async chain gets killed
-    // by Android WebView suspension before plugin.schedule() completes.
+    // Init and schedule FIRST — must not be blocked by anything.
+    // checkExactNotificationSetting() can hang on some devices; run it after,
+    // fire-and-forget so it never prevents initBackgroundGongs from running.
     await initBackgroundGongs();
-    scheduleBackgroundGongs(0);
+    await scheduleBackgroundGongs(0, 'sessionStart');
+
+    // UI-only exact alarm banner — fire-and-forget, safe to be slow
+    _checkExactAlarmOnce();
 }
 
 async function _checkExactAlarmOnce() {

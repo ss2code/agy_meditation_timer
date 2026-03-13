@@ -23,8 +23,9 @@ import { gong, setElapsedTime, elapsedTime } from './timer/timer.js';
 import { analyzeSession } from './bio/bio-math-engine.js';
 import { PROFILE_RESTLESS, PROFILE_DEEP, PROFILE_SOMNOLENT } from './bio/mock-data.js';
 import * as healthConnect from './bio/health-connect-service.js';
+import { getDiagnosticLogs, clearDiagnosticLogs, getGongIntervalSec, setGongIntervalSec, getUseDefaultSound, setUseDefaultSound } from './timer/background-gong.js';
 
-const APP_VERSION = 'v7.17';
+const APP_VERSION = 'v7.21';
 
 // ── Bio Dev Panel ────────────────────────────────────────────────────────────
 
@@ -80,6 +81,18 @@ function _toggleDevPanel(storage) {
             <button class="dev-sim-btn" data-profile="somnolent">Somnolent</button>
         </div>
         <div id="dev-result" class="dev-result"></div>
+        <hr style="margin:0.75rem 0;border-color:#eee">
+        <p class="dev-panel-label">Gong Diagnostics</p>
+        <p class="dev-panel-label" style="font-size:0.7rem;color:#90A4AE">Interval affects both Web Audio and notification timing.<br>Sound affects notification only (Web Audio always plays metallic gong).</p>
+        <div class="dev-btn-row" style="gap:0.4rem">
+            <button id="dev-interval-btn" class="dev-setting-btn">${getGongIntervalSec() === 900 ? '15 min' : '2 min'}</button>
+            <button id="dev-sound-btn" class="dev-setting-btn">${getUseDefaultSound() ? 'Sound: Chime' : 'Sound: Gong'}</button>
+        </div>
+        <div class="dev-btn-row">
+            <button id="dev-gong-log-btn">View Gong Log</button>
+            <button id="dev-gong-clear-btn">Clear Log</button>
+        </div>
+        <div id="dev-gong-log" class="dev-result" style="max-height:300px;overflow-y:auto;font-size:0.65rem;white-space:pre-wrap;display:none"></div>
         ${isNative ? `
         <hr style="margin:0.75rem 0;border-color:#eee">
         <p class="dev-panel-label">Health Connect — Seed & Test (native only)</p>
@@ -110,6 +123,32 @@ function _toggleDevPanel(storage) {
         });
     });
 
+    // Gong interval toggle: 2 min ↔ 15 min
+    document.getElementById('dev-interval-btn')?.addEventListener('click', (e) => {
+        const newSec = getGongIntervalSec() === 900 ? 120 : 900;
+        setGongIntervalSec(newSec);
+        e.target.textContent = newSec === 900 ? '15 min' : '2 min';
+    });
+
+    // Notification sound toggle: gong.wav ↔ Android chime
+    document.getElementById('dev-sound-btn')?.addEventListener('click', (e) => {
+        const newVal = !getUseDefaultSound();
+        setUseDefaultSound(newVal);
+        e.target.textContent = newVal ? 'Sound: Chime' : 'Sound: Gong';
+    });
+
+    // Gong diagnostic buttons
+    document.getElementById('dev-gong-log-btn')?.addEventListener('click', () => {
+        const logEl = document.getElementById('dev-gong-log');
+        const logs = getDiagnosticLogs();
+        logEl.style.display = logEl.style.display === 'none' ? 'block' : 'none';
+        logEl.textContent = logs.length ? logs.join('\n') : '(no log entries)';
+    });
+    document.getElementById('dev-gong-clear-btn')?.addEventListener('click', () => {
+        clearDiagnosticLogs();
+        const logEl = document.getElementById('dev-gong-log');
+        logEl.textContent = '(cleared)';
+    });
     // Health Connect seed button (native only)
     document.getElementById('dev-hc-seed-btn')?.addEventListener('click', async () => {
         const resultEl = document.getElementById('dev-hc-result');
@@ -190,7 +229,7 @@ async function boot() {
     // 4. Mount all views (pass storage to each)
     mountTimerView(storage);
     mountSessionView(storage);
-    mountDashboardView(storage);
+    mountDashboardView(storage, () => _toggleDevPanel(storage));
     mountInsightsView(storage);
 
     // 5. Initialize router with view handlers

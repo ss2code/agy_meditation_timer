@@ -6,7 +6,7 @@
 
 import { Gong } from './gong.js';
 import { formatTime } from '../utils/date-helpers.js';
-import { scheduleBackgroundGongs, cancelBackgroundGongs } from './background-gong.js';
+import { scheduleBackgroundGongs, cancelBackgroundGongs, getGongIntervalSec } from './background-gong.js';
 
 export const gong = new Gong();
 
@@ -65,8 +65,8 @@ function _checkGongs(prevTime, currTime) {
     for (let t = prevTime + 1; t <= currTime; t++) {
         if (t === 15) {
             gong.play(1);
-        } else if (t > 0 && t % 900 === 0) {
-            gong.play(t / 900);
+        } else if (t > 0 && t % getGongIntervalSec() === 0) {
+            gong.play(t / getGongIntervalSec());
         }
     }
 }
@@ -106,7 +106,7 @@ export function pauseTimer() {
     _accumulatedBeforePause = elapsedTime;
     _resumeWallTime = null;
 
-    cancelBackgroundGongs();
+    cancelBackgroundGongs('pauseTimer');
 }
 
 /**
@@ -118,7 +118,7 @@ export function finishTimer() {
     _syncElapsed();
     pauseTimer();
 
-    cancelBackgroundGongs();
+    cancelBackgroundGongs('finishTimer');
 
     if (elapsedTime >= 10 && onSessionSaveCallback) {
         onSessionSaveCallback({
@@ -137,25 +137,38 @@ export function finishTimer() {
 
 /**
  * Called when the page becomes visible again (e.g. screen unlock).
- * Cancels background notifications (Web Audio takes over) and syncs elapsed time.
+ *
+ * DIAGNOSTIC MODE: does NOT cancel notifications — both Web Audio and Android
+ * notifications run independently so the user can identify which mechanism
+ * produced the sound (metallic gong = Web Audio, default chime = notification).
+ *
+ * Syncs elapsed time and fires any catch-up Web Audio gongs.
  */
 export function handleVisibilityResume() {
     if (!timerId) return;
-    cancelBackgroundGongs();
+    // DIAGNOSTIC: no cancelBackgroundGongs() — let notifications keep firing
     _syncElapsed();
     if (onTickCallback) onTickCallback(elapsedTime);
     _checkGongs(_lastGongCheckTime, elapsedTime);
     _lastGongCheckTime = elapsedTime;
+
+    // Reschedule while in foreground (reliable) so new gongs are registered
+    // for any times beyond what was originally scheduled.
+    scheduleBackgroundGongs(elapsedTime, 'visibilityResume');
 }
 
 /**
  * Called when the page is hidden (screen locked / app backgrounded).
- * Schedules local notifications so gongs fire even without Web Audio.
+ * Only syncs elapsed time — does NOT schedule gongs here.
+ *
+ * Gong notifications are already scheduled from session start or the last
+ * handleVisibilityResume.  Attempting to schedule during backgrounding is
+ * unreliable: Android suspends the WebView before the async plugin.schedule()
+ * call completes, leaving zero alarms registered.
  */
 export function handleVisibilityHidden() {
     if (!timerId) return;
     _syncElapsed();
-    scheduleBackgroundGongs(elapsedTime);
 }
 
 /**

@@ -4,9 +4,11 @@ import { formatDuration, isSameDay } from '../../utils/date-helpers.js';
 import { navigateTo } from '../router.js';
 
 let _storage = null;
+let _onDevPanelOpen = null;
 
-export function mountDashboardView(storage) {
+export function mountDashboardView(storage, onDevPanelOpen) {
     _storage = storage;
+    _onDevPanelOpen = onDevPanelOpen;
 }
 
 export async function renderDashboardView() {
@@ -20,6 +22,7 @@ export async function renderDashboardView() {
             <div class="view-header"><h2 class="view-title">History</h2></div>
             <p class="empty-state">No sessions yet. Start meditating!</p>
         `;
+        _renderDevButton(container);
         return;
     }
 
@@ -53,6 +56,17 @@ export async function renderDashboardView() {
     container.querySelectorAll('.history-item--clickable').forEach((el) => {
         el.addEventListener('click', () => navigateTo('session', [el.dataset.id]));
     });
+
+    // Dev panel button — always visible for diagnostic builds
+    _renderDevButton(container);
+}
+
+function _renderDevButton(container) {
+    const btn = document.createElement('button');
+    btn.className = 'dev-panel-open-btn';
+    btn.textContent = '⚙ Dev Debug';
+    btn.addEventListener('click', () => _onDevPanelOpen?.());
+    container.appendChild(btn);
 }
 
 function _groupByDate(sessions) {

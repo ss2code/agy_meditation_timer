@@ -22,7 +22,7 @@ export class Gong {
         const buffer = this.ctx.createBuffer(1, length, sampleRate);
         const data = buffer.getChannelData(0);
 
-        const baseFreq = 100;
+        const baseFreq = 220; // A3 — above phone speaker rolloff (~200 Hz), avoids chassis resonance
         const harmonics = [1, 2.5, 3.2, 4.1, 5.7]; // Inharmonic for metallic timbre
         const weights = [1, 0.6, 0.4, 0.3, 0.2];
 
@@ -50,8 +50,8 @@ export class Gong {
 
         const filter = this.ctx.createBiquadFilter();
         filter.type = 'lowpass';
-        filter.frequency.setValueAtTime(800, time);
-        filter.frequency.exponentialRampToValueAtTime(100, time + 14);
+        filter.frequency.setValueAtTime(2000, time);
+        filter.frequency.exponentialRampToValueAtTime(300, time + 14);
 
         const gain = this.ctx.createGain();
         gain.gain.setValueAtTime(1.5, time);

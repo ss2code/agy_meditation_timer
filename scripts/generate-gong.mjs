@@ -19,7 +19,7 @@ const DURATION    = 15.0;  // seconds — matches the updated gong.js
 const NUM_SAMPLES = Math.round(SAMPLE_RATE * DURATION);
 
 // Synthesis parameters — kept in sync with gong.js
-const BASE_FREQ  = 100;
+const BASE_FREQ  = 220; // A3 — above phone speaker rolloff, avoids chassis resonance
 const HARMONICS  = [1, 2.5, 3.2, 4.1, 5.7]; // inharmonic for metallic timbre
 const WEIGHTS    = [1, 0.6, 0.4, 0.3, 0.2];
 
