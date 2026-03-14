@@ -114,6 +114,10 @@ echo ""
 if [ "$SKIP_BUILD" = false ]; then
   info "Building web bundle with Vite..."
   cd "$PROJECT_ROOT"
+  if [ ! -d "node_modules" ]; then
+    info "node_modules missing — running npm install first..."
+    npm install
+  fi
   npm run build
   success "www/ updated"
 

@@ -104,7 +104,7 @@ When changing `src/` JS, CSS, or HTML, bump **two** things:
 
 Vite handles JS/CSS cache-busting automatically via content hashes.
 
-**Current:** `APP_VERSION='v7.11'`, `CACHE_NAME='meditation-timer-v21'`
+**Current:** `APP_VERSION='v8.2'`, `CACHE_NAME='meditation-timer-v37'`
 
 **Why CACHE_NAME matters on device:** The service worker caches `index.html` with a
 cache-first strategy and stays alive across APK reinstalls. If CACHE_NAME is not bumped,
