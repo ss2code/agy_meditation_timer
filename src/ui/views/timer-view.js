@@ -1,6 +1,7 @@
 // timer-view.js — Timer screen: display, controls, mini stats, recent sessions
 
 import { formatTime, formatDuration, formatHeaderDate, isSameDay, getWeekStart, getLast7DaysCounts } from '../../utils/date-helpers.js';
+import { escapeHtml } from '../../utils/escape-html.js';
 import { startTimer, pauseTimer, finishTimer, isRunning, onTick, onSessionSave, sessionStartTimestamp } from '../../timer/timer.js';
 import { navigateTo } from '../router.js';
 import { analyzeSession } from '../../bio/bio-math-engine.js';
@@ -364,7 +365,7 @@ export async function renderHistory() {
         const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         const dateString = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
         const qualityBadge = session.insights?.sessionQuality
-            ? ` <span class="quality-badge quality-badge--${session.insights.sessionQuality}">${_qualityLabel(session.insights.sessionQuality)}</span>`
+            ? ` <span class="quality-badge quality-badge--${escapeHtml(session.insights.sessionQuality)}">${escapeHtml(_qualityLabel(session.insights.sessionQuality))}</span>`
             : '';
 
         const li = document.createElement('li');

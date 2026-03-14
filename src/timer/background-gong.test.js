@@ -2,8 +2,7 @@
 //
 // computeGongSchedule() is a pure function so no mocking is needed.
 //
-// NOTE: GONG_INTERVAL_SEC is currently 300 (5-min) for testing.
-// When changed back to 900 (15-min) for production, update these tests accordingly.
+// NOTE: GONG_INTERVAL_SEC is 900 (15-min) for production.
 
 import { describe, it, expect } from 'vitest';
 import { computeGongSchedule } from './background-gong.js';
@@ -11,7 +10,7 @@ import { computeGongSchedule } from './background-gong.js';
 const NOW = 1_000_000; // arbitrary epoch ms
 
 // Must match getGongIntervalSec() default in background-gong.js
-const INTERVAL = 300;
+const INTERVAL = 900;
 
 describe('computeGongSchedule', () => {
     it('schedules settling gong at t=15 when elapsed=0', () => {
@@ -86,11 +85,11 @@ describe('computeGongSchedule', () => {
     });
 
     it('total notification count for a 2-hour session from elapsed=0', () => {
-        // INTERVAL=300, MAX=7200 → 24 interval marks + settling gong
+        // INTERVAL=900, MAX=7200 → 8 interval marks + settling gong
         // t=15: 1 strike
-        // t=300: 1, t=600: 2, t=900: 3, ..., t=7200: 24
-        // = 1 + sum(1..24) = 1 + 300 = 301
+        // t=900: 1, t=1800: 2, t=2700: 3, t=3600: 4, t=4500: 5, t=5400: 6, t=6300: 7, t=7200: 8
+        // = 1 + sum(1..8) = 1 + 36 = 37
         const schedule = computeGongSchedule(0, NOW);
-        expect(schedule.length).toBe(301);
+        expect(schedule.length).toBe(37);
     });
 });

@@ -3,6 +3,13 @@
    v6.0 — Biofeedback edition with tab-bar navigation
    ============================================================ */
 
+@font-face {
+    font-family: 'Outfit';
+    src: url('/fonts/outfit-variable.woff2') format('woff2');
+    font-weight: 100 900;
+    font-display: swap;
+}
+
 /* ── Design Tokens ───────────────────────────────────────── */
 :root {
     --bg-color:       #E0F2F1;  /* Soft sage green */

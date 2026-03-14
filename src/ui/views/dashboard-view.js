@@ -1,6 +1,7 @@
 // dashboard-view.js — History list grouped by date
 
 import { formatDuration, isSameDay } from '../../utils/date-helpers.js';
+import { escapeHtml } from '../../utils/escape-html.js';
 import { navigateTo } from '../router.js';
 
 let _storage = null;
@@ -22,7 +23,7 @@ export async function renderDashboardView() {
             <div class="view-header"><h2 class="view-title">History</h2></div>
             <p class="empty-state">No sessions yet. Start meditating!</p>
         `;
-        _renderDevButton(container);
+        if (import.meta.env.DEV) _renderDevButton(container);
         return;
     }
 
@@ -36,10 +37,10 @@ export async function renderDashboardView() {
             const date = new Date(session.endTimestamp || session.startTimestamp);
             const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             const qualityBadge = session.insights?.sessionQuality
-                ? `<span class="quality-badge quality-badge--${session.insights.sessionQuality}">${_qualityLabel(session.insights.sessionQuality)}</span>`
+                ? `<span class="quality-badge quality-badge--${escapeHtml(session.insights.sessionQuality)}">${escapeHtml(_qualityLabel(session.insights.sessionQuality))}</span>`
                 : '';
             html += `
-                <li class="history-item history-item--clickable" data-id="${session.id}">
+                <li class="history-item history-item--clickable" data-id="${escapeHtml(session.id)}">
                     <div class="history-item__main">
                         <span class="history-item__duration">${formatDuration(session.duration)}</span>
                         ${qualityBadge}
@@ -57,8 +58,8 @@ export async function renderDashboardView() {
         el.addEventListener('click', () => navigateTo('session', [el.dataset.id]));
     });
 
-    // Dev panel button — always visible for diagnostic builds
-    _renderDevButton(container);
+    // Dev panel button — DEV builds only
+    if (import.meta.env.DEV) _renderDevButton(container);
 }
 
 function _renderDevButton(container) {

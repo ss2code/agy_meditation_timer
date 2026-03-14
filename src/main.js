@@ -25,7 +25,7 @@ import { PROFILE_RESTLESS, PROFILE_DEEP, PROFILE_SOMNOLENT } from './bio/mock-da
 import * as healthConnect from './bio/health-connect-service.js';
 import { initBackgroundGongs, getDiagnosticLogs, clearDiagnosticLogs, getGongIntervalSec, setGongIntervalSec, getUseDefaultSound, setUseDefaultSound } from './timer/background-gong.js';
 
-const APP_VERSION = 'v8.2';
+const APP_VERSION = 'v8.5';
 
 // ── Bio Dev Panel ────────────────────────────────────────────────────────────
 
@@ -233,7 +233,7 @@ async function boot() {
     // 4. Mount all views (pass storage to each)
     mountTimerView(storage);
     mountSessionView(storage);
-    mountDashboardView(storage, () => _toggleDevPanel(storage));
+    mountDashboardView(storage, import.meta.env.DEV ? () => _toggleDevPanel(storage) : null);
     mountInsightsView(storage);
 
     // 5. Initialize router with view handlers
@@ -244,9 +244,17 @@ async function boot() {
         insights: () => renderInsightsView(),
     });
 
-    // 6. Version footer
+    // 6. Version footer — long-press (1s) opens dev panel
     const footer = document.getElementById('versionFooter');
-    if (footer) footer.textContent = APP_VERSION;
+    if (footer) {
+        footer.textContent = APP_VERSION;
+        let _pressTimer = null;
+        footer.addEventListener('pointerdown', () => {
+            _pressTimer = setTimeout(() => _toggleDevPanel(storage), 1000);
+        });
+        footer.addEventListener('pointerup', () => clearTimeout(_pressTimer));
+        footer.addEventListener('pointercancel', () => clearTimeout(_pressTimer));
+    }
 
     // 7. Register service worker
     if ('serviceWorker' in navigator) {
@@ -255,23 +263,25 @@ async function boot() {
             .catch((err) => console.warn('[SW] Registration failed', err));
     }
 
-    // 8. Debug tools (browser console)
-    window.meditationDebug = {
-        setTime: (seconds) => setElapsedTime(seconds),
-        testGong: (strikes = 1) => gong.play(strikes),
-        jumpToNextGong: () => {
-            const t = elapsedTime;
-            const next = t < 15 ? 10 : Math.ceil((t + 1) / 900) * 900 - 5;
-            setElapsedTime(next);
-        },
-        // Bio simulation: run a mock profile through analyzeSession() and save a session
-        // Usage: await meditationDebug.simulateBioSession('deep')
-        //        profiles: 'restless' | 'deep' | 'somnolent'
-        simulateBioSession: (profile = 'deep') => _simulateBioSession(profile, storage),
-        devPanel: () => _toggleDevPanel(storage),
-        storage,
-    };
-    console.log("Meditation Debug Tools: window.meditationDebug");
+    // 8. Debug tools (browser console — DEV only, stripped from production builds)
+    if (import.meta.env.DEV) {
+        window.meditationDebug = {
+            setTime: (seconds) => setElapsedTime(seconds),
+            testGong: (strikes = 1) => gong.play(strikes),
+            jumpToNextGong: () => {
+                const t = elapsedTime;
+                const next = t < 15 ? 10 : Math.ceil((t + 1) / 900) * 900 - 5;
+                setElapsedTime(next);
+            },
+            // Bio simulation: run a mock profile through analyzeSession() and save a session
+            // Usage: await meditationDebug.simulateBioSession('deep')
+            //        profiles: 'restless' | 'deep' | 'somnolent'
+            simulateBioSession: (profile = 'deep') => _simulateBioSession(profile, storage),
+            devPanel: () => _toggleDevPanel(storage),
+            storage,
+        };
+        console.log("Meditation Debug Tools: window.meditationDebug");
+    }
 }
 
 boot().catch((err) => {

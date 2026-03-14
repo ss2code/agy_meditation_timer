@@ -1,6 +1,7 @@
 // session-view.js — Session detail: bio insights summary + bio-signal charts
 
 import { formatDuration } from '../../utils/date-helpers.js';
+import { escapeHtml } from '../../utils/escape-html.js';
 import { navigateTo } from '../router.js';
 import {
     createChart,
@@ -181,7 +182,7 @@ function _insightsCard(insights, session) {
         : '';
 
     const qualityBadge = insights.sessionQuality
-        ? `<div class="session-quality quality-badge quality-badge--${insights.sessionQuality}">${_qualityLabel(insights.sessionQuality)}</div>`
+        ? `<div class="session-quality quality-badge quality-badge--${escapeHtml(insights.sessionQuality)}">${escapeHtml(_qualityLabel(insights.sessionQuality))}</div>`
         : '';
 
     const respConf = insights.respirationRate?.confidence;
@@ -242,7 +243,7 @@ function _diagnosticsPanel(telemetry, insights, session) {
         <details class="diagnostics-panel">
             <summary class="card-heading" style="cursor:pointer">Raw Data</summary>
             <div class="diag-content">
-                <p><strong>Source:</strong> ${src}${reason ? ` — ${reason}` : ''}</p>
+                <p><strong>Source:</strong> ${escapeHtml(src)}${reason ? ` — ${escapeHtml(reason)}` : ''}</p>
                 ${queriedLine}
                 <p><strong>Respiration:</strong> ${respMeta?.source || '—'} (${respMeta?.confidence || '—'})</p>
                 <table class="diag-table">

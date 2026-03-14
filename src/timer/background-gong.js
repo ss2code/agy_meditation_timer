@@ -44,7 +44,7 @@ function _getConfig() {
 export function getGongIntervalSec() {
     const val = _getConfig().intervalSec;
     if (val === 120) return 300; // migrate old 2-min setting
-    return val ?? 300; // default 5 min for diagnostic builds
+    return val ?? 900; // default 15 min
 }
 
 export function setGongIntervalSec(sec) {

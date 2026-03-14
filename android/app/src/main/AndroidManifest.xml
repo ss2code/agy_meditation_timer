@@ -2,7 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <application
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
@@ -56,11 +56,6 @@
     <uses-permission android:name="android.permission.health.READ_HEART_RATE_VARIABILITY_RMSSD"/>
     <uses-permission android:name="android.permission.health.READ_OXYGEN_SATURATION"/>
     <uses-permission android:name="android.permission.health.READ_RESPIRATORY_RATE"/>
-    <!-- Write permissions — used by dev panel to seed synthetic test data on AVD -->
-    <uses-permission android:name="android.permission.health.WRITE_HEART_RATE"/>
-    <uses-permission android:name="android.permission.health.WRITE_OXYGEN_SATURATION"/>
-    <uses-permission android:name="android.permission.health.WRITE_RESPIRATORY_RATE"/>
-
     <!-- Required for Health Connect intent resolution on Android 11+ -->
     <queries>
         <package android:name="com.google.android.apps.healthdata" />

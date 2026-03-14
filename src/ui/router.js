@@ -29,7 +29,9 @@ export function initRouter(viewHandlers) {
 function _parseHash() {
     const hash = window.location.hash.slice(1) || 'timer';
     const [view, ...parts] = hash.split('/');
-    return { view, params: parts };
+    // Sanitize params — allow only safe characters to prevent future XSS vectors
+    const params = parts.map(p => p.replace(/[^a-zA-Z0-9_-]/g, ''));
+    return { view, params };
 }
 
 function _handleHash() {

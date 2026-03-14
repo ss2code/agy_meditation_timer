@@ -10,6 +10,12 @@ import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { DataStorageInterface } from './storage-interface.js';
 
 const BASE = 'MeditationApp';
+
+function _validateId(id) {
+    if (typeof id !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(id)) {
+        throw new Error(`Invalid session ID: ${id}`);
+    }
+}
 const SESSIONS_DIR = `${BASE}/sessions`;
 const INDEX_PATH = `${BASE}/sessions_index.json`;
 
@@ -26,6 +32,7 @@ export class FilesystemAdapter extends DataStorageInterface {
     }
 
     async saveSession(session) {
+        _validateId(session.id);
         const i = this._indexCache.findIndex((s) => s.id === session.id);
         if (i >= 0) {
             this._indexCache[i] = session;
@@ -40,6 +47,7 @@ export class FilesystemAdapter extends DataStorageInterface {
     }
 
     async getSession(sessionId) {
+        _validateId(sessionId);
         try {
             const data = await _readFile(`${SESSIONS_DIR}/${sessionId}/metadata.json`);
             return JSON.parse(data);
@@ -53,6 +61,7 @@ export class FilesystemAdapter extends DataStorageInterface {
     }
 
     async saveTelemetry(sessionId, rows) {
+        _validateId(sessionId);
         const dir = `${SESSIONS_DIR}/${sessionId}`;
         await _ensureDir(dir);
         // Store as JSON — telemetry is a multi-series object {hr, hrv, temp, spo2, ...}
@@ -65,6 +74,7 @@ export class FilesystemAdapter extends DataStorageInterface {
     }
 
     async getTelemetry(sessionId) {
+        _validateId(sessionId);
         try {
             const data = await _readFile(`${SESSIONS_DIR}/${sessionId}/telemetry.json`);
             return JSON.parse(data);
@@ -74,6 +84,7 @@ export class FilesystemAdapter extends DataStorageInterface {
     }
 
     async deleteSession(sessionId) {
+        _validateId(sessionId);
         this._indexCache = this._indexCache.filter((s) => s.id !== sessionId);
         await this._writeIndex();
         try {
