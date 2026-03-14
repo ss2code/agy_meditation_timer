@@ -356,14 +356,14 @@ describe('extractRespirationFromHR', () => {
     });
 
     it('returns empty when series has fewer than 10 points', () => {
-        // 30 s at 5 s intervals = 7 points
-        const short = makeSeries(30, 5, (t) => 65 + Math.sin(t / 2) * 3);
+        // 8 s at 1 s intervals = 9 points
+        const short = makeSeries(8, 1, (t) => 65 + Math.sin(t / 2) * 3);
         expect(extractRespirationFromHR(short, 60)).toEqual([]);
     });
 
     it('detects ~5 bpm for HR with RSA wave at period = 12 s', () => {
         // HR oscillates at 5 bpm — same frequency as DEEP profile HRV RSA
-        const hr = makeSeries(2700, 5, (t) => 65 + Math.sin((2 * Math.PI * t) / 12) * 5);
+        const hr = makeSeries(2700, 1, (t) => 65 + Math.sin((2 * Math.PI * t) / 12) * 5);
         const result = extractRespirationFromHR(hr, 60);
         expect(result.length).toBeGreaterThan(0);
         const avg = result.reduce((s, p) => s + p.breathsPerMinute, 0) / result.length;
@@ -372,7 +372,7 @@ describe('extractRespirationFromHR', () => {
     });
 
     it('detects ~3 bpm for HR with slow RSA (period = 20 s)', () => {
-        const hr = makeSeries(2700, 5, (t) => 65 + Math.sin((2 * Math.PI * t) / 20) * 5);
+        const hr = makeSeries(2700, 1, (t) => 65 + Math.sin((2 * Math.PI * t) / 20) * 5);
         const result = extractRespirationFromHR(hr, 60);
         expect(result.length).toBeGreaterThan(0);
         const avg = result.reduce((s, p) => s + p.breathsPerMinute, 0) / result.length;
@@ -381,11 +381,39 @@ describe('extractRespirationFromHR', () => {
     });
 
     it('returns readings spaced ~30 s apart', () => {
-        const hr = makeSeries(2700, 5, (t) => 65 + Math.sin((2 * Math.PI * t) / 12) * 5);
+        const hr = makeSeries(2700, 1, (t) => 65 + Math.sin((2 * Math.PI * t) / 12) * 5);
         const result = extractRespirationFromHR(hr, 60);
         if (result.length < 2) return;
         const dtMs = new Date(result[1].timestamp).getTime() - new Date(result[0].timestamp).getTime();
         expect(dtMs).toBeCloseTo(30_000, -2);
+    });
+
+    it('detects ~15 bpm for normal resting HR with RSA wave at period = 4 s', () => {
+        // 1 second sampling interval (1 Hz) to satisfy Nyquist for 0.25 Hz signal
+        const hr = makeSeries(2700, 1, (t) => 65 + Math.sin((2 * Math.PI * t) / 4) * 5);
+        const result = extractRespirationFromHR(hr, 60);
+        expect(result.length).toBeGreaterThan(0);
+        const avg = result.reduce((s, p) => s + p.breathsPerMinute, 0) / result.length;
+        expect(avg).toBeGreaterThanOrEqual(14);
+        expect(avg).toBeLessThanOrEqual(16);
+    });
+
+    it('detects ~12 bpm for relaxed HR with RSA wave at period = 5 s', () => {
+        // 1 second sampling interval (1 Hz) to satisfy Nyquist for 0.2 Hz signal
+        const hr = makeSeries(2700, 1, (t) => 65 + Math.sin((2 * Math.PI * t) / 5) * 5);
+        const result = extractRespirationFromHR(hr, 60);
+        expect(result.length).toBeGreaterThan(0);
+        const avg = result.reduce((s, p) => s + p.breathsPerMinute, 0) / result.length;
+        expect(avg).toBeGreaterThanOrEqual(11);
+        expect(avg).toBeLessThanOrEqual(13);
+    });
+
+    it('flags insufficient sampling density for 5s intervals', () => {
+        // 5s interval is too sparse to detect 15 bpm reliably
+        const hr = makeSeries(2700, 5, (t) => 65 + Math.sin((2 * Math.PI * t) / 4) * 5);
+        const result = extractRespirationFromHR(hr, 60);
+        // Expect empty array due to fast fail Nyquist guard
+        expect(result.length).toBe(0); 
     });
 });
 
@@ -453,7 +481,7 @@ describe('analyzeSession integration', () => {
 
     it('falls back to extractRespirationFromHR when hrv is absent (Health Connect path)', () => {
         // Only HR data — no HRV. Should still compute respiration via HR RSA.
-        const hr = makeSeries(2700, 5, (t) => 65 + Math.sin((2 * Math.PI * t) / 12) * 5);
+        const hr = makeSeries(2700, 1, (t) => 65 + Math.sin((2 * Math.PI * t) / 12) * 5);
         const insights = analyzeSession({ hr, hrv: [], temp: [], spo2: [] });
         expect(insights.respirationRate.average).toBeGreaterThan(0);
     });
@@ -486,18 +514,18 @@ describe('analyzeSession integration', () => {
 // ─── RSA Sample Density Guard ────────────────────────────────────────────────
 
 describe('RSA sample density guard', () => {
-    it('returns empty for HR at 30s intervals (0.033 Hz < 0.1 Hz threshold)', () => {
+    it('returns empty for HR at 30s intervals (0.033 Hz < 0.66 Hz threshold)', () => {
         // 30s interval = 0.033 Hz — below Nyquist guard
         const hr = makeSeries(2700, 30, (t) => 65 + Math.sin((2 * Math.PI * t) / 12) * 5);
         const result = extractRespirationFromHR(hr, 60);
         expect(result).toEqual([]);
     });
 
-    it('returns results for HR at 5s intervals (0.2 Hz >= 0.1 Hz threshold)', () => {
-        // 5s interval = 0.2 Hz — above Nyquist guard
+    it('returns empty for HR at 5s intervals (0.2 Hz < 0.66 Hz threshold)', () => {
+        // 5s interval = 0.2 Hz — below Nyquist guard now
         const hr = makeSeries(2700, 5, (t) => 65 + Math.sin((2 * Math.PI * t) / 12) * 5);
         const result = extractRespirationFromHR(hr, 60);
-        expect(result.length).toBeGreaterThan(0);
+        expect(result).toEqual([]);
     });
 
     it('returns results for HRV at 1s intervals (existing behavior)', () => {
@@ -533,7 +561,7 @@ describe('computeEffectiveSampleRate', () => {
 describe('analyzeSession metadata', () => {
     it('includes respirationRate.source and confidence', () => {
         const telemetry = {
-            hr:   makeSeries(2700, 5,  (t) => 65 + Math.sin((2 * Math.PI * t) / 12) * 5),
+            hr:   makeSeries(2700, 1,  (t) => 65 + Math.sin((2 * Math.PI * t) / 12) * 5),
             hrv:  [],
             temp: [],
             spo2: [],
@@ -578,17 +606,18 @@ describe('analyzeSession metadata', () => {
         expect(insights.telemetryDiagnostics.effectiveRates.hrv).toBeCloseTo(1.0, 1);
     });
 
-    it('sets insufficient_data when sparse HR cannot produce RSA', () => {
-        // 30s intervals = too sparse for RSA
+    it('sets insufficient_data and warning when sparse HR cannot produce RSA', () => {
+        // 5s intervals = too sparse for RSA under new rules
         const telemetry = {
-            hr:   makeSeries(2700, 30, (t) => 65 + Math.sin((2 * Math.PI * t) / 12) * 5),
+            hr:   makeSeries(2700, 5, (t) => 65 + Math.sin((2 * Math.PI * t) / 12) * 5),
             hrv:  [],
             temp: [],
             spo2: [],
         };
         const insights = analyzeSession(telemetry);
         expect(insights.respirationRate.source).toBe('insufficient_data');
-        expect(insights.respirationRate.confidence).toBe('none');
+        expect(insights.respirationRate.confidence).toBe('low');
+        expect(insights.respirationRate.warning).toBe('Insufficient sampling rate for accurate respiration detection');
     });
 });
 

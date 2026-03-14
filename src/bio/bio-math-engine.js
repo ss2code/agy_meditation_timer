@@ -129,7 +129,7 @@ function _extractRespiration(series, windowSeconds) {
 
     // Nyquist guard: reject data too sparse for RSA extraction
     const effectiveRate = computeEffectiveSampleRate(series);
-    if (effectiveRate < 0.1) return [];
+    if (effectiveRate < 0.66) return [];
 
     // Step 1: Resample to uniform 4 Hz
     const uniform = _resampleUniform(series, startMs, totalMs, DT_MS);
@@ -263,6 +263,7 @@ export function analyzeSession(telemetry) {
     // 3. RSA extraction from HR bpm (fallback for real data without raw RR)
     let respirationSource = 'insufficient_data';
     let respirationConfidence = 'none';
+    let respirationWarning;
     let respiration;
 
     if (resp.length) {
@@ -274,12 +275,20 @@ export function analyzeSession(telemetry) {
         if (respiration.length) {
             respirationSource = 'rsa_hrv';
             respirationConfidence = 'medium';
+        } else if (computeEffectiveSampleRate(hrv) > 0 && computeEffectiveSampleRate(hrv) < 0.66) {
+            respirationSource = 'insufficient_data';
+            respirationConfidence = 'low';
+            respirationWarning = 'Insufficient sampling rate for accurate respiration detection';
         }
     } else {
         respiration = extractRespirationFromHR(hr);
         if (respiration.length) {
             respirationSource = 'rsa_hr';
             respirationConfidence = 'low';
+        } else if (computeEffectiveSampleRate(hr) > 0 && computeEffectiveSampleRate(hr) < 0.66) {
+            respirationSource = 'insufficient_data';
+            respirationConfidence = 'low';
+            respirationWarning = 'Insufficient sampling rate for accurate respiration detection';
         }
     }
     if (!respiration) respiration = [];
@@ -316,6 +325,7 @@ export function analyzeSession(telemetry) {
             breathlessTotalSeconds: breathlessPeriods.length * 30, // step = 30 s
             source: respirationSource,
             confidence: respirationConfidence,
+            ...(respirationWarning && { warning: respirationWarning }),
         },
         skinTemp: tempAnalysis,
         spo2: {
@@ -417,9 +427,10 @@ function _dominantRespFrequency(arr, start, end, sampleRate) {
     const N = end - start;
     const freqRes = sampleRate / N;
 
-    // Respiratory band: 0.05–0.6 Hz → 3–36 breaths/min
+    // Respiratory band: 0.15–0.4 Hz → 9–24 breaths/min
+    // (Allowing LO=0.05 to still catch deep meditation breathing)
     const RESP_LO = 0.05;
-    const RESP_HI = 0.6;
+    const RESP_HI = 0.4;
     const kMin = Math.max(1, Math.ceil(RESP_LO / freqRes));
     const kMax = Math.min(Math.floor(N / 2) - 1, Math.floor(RESP_HI / freqRes));
     if (kMin > kMax) return 0;
