@@ -23,9 +23,9 @@ import { gong, setElapsedTime, elapsedTime } from './timer/timer.js';
 import { analyzeSession } from './bio/bio-math-engine.js';
 import { PROFILE_RESTLESS, PROFILE_DEEP, PROFILE_SOMNOLENT } from './bio/mock-data.js';
 import * as healthConnect from './bio/health-connect-service.js';
-import { getDiagnosticLogs, clearDiagnosticLogs, getGongIntervalSec, setGongIntervalSec, getUseDefaultSound, setUseDefaultSound } from './timer/background-gong.js';
+import { initBackgroundGongs, getDiagnosticLogs, clearDiagnosticLogs, getGongIntervalSec, setGongIntervalSec, getUseDefaultSound, setUseDefaultSound } from './timer/background-gong.js';
 
-const APP_VERSION = 'v7.21';
+const APP_VERSION = 'v8.1';
 
 // ── Bio Dev Panel ────────────────────────────────────────────────────────────
 
@@ -85,7 +85,7 @@ function _toggleDevPanel(storage) {
         <p class="dev-panel-label">Gong Diagnostics</p>
         <p class="dev-panel-label" style="font-size:0.7rem;color:#90A4AE">Interval affects both Web Audio and notification timing.<br>Sound affects notification only (Web Audio always plays metallic gong).</p>
         <div class="dev-btn-row" style="gap:0.4rem">
-            <button id="dev-interval-btn" class="dev-setting-btn">${getGongIntervalSec() === 900 ? '15 min' : '2 min'}</button>
+            <button id="dev-interval-btn" class="dev-setting-btn">${getGongIntervalSec() === 900 ? '15 min' : '5 min'}</button>
             <button id="dev-sound-btn" class="dev-setting-btn">${getUseDefaultSound() ? 'Sound: Chime' : 'Sound: Gong'}</button>
         </div>
         <div class="dev-btn-row">
@@ -123,11 +123,11 @@ function _toggleDevPanel(storage) {
         });
     });
 
-    // Gong interval toggle: 2 min ↔ 15 min
+    // Gong interval toggle: 5 min ↔ 15 min
     document.getElementById('dev-interval-btn')?.addEventListener('click', (e) => {
-        const newSec = getGongIntervalSec() === 900 ? 120 : 900;
+        const newSec = getGongIntervalSec() === 900 ? 300 : 900;
         setGongIntervalSec(newSec);
-        e.target.textContent = newSec === 900 ? '15 min' : '2 min';
+        e.target.textContent = newSec === 900 ? '15 min' : '5 min';
     });
 
     // Notification sound toggle: gong.wav ↔ Android chime
@@ -221,6 +221,10 @@ async function boot() {
 
     // 2. Migrate old localStorage data (no-op if already done)
     await runMigrationIfNeeded(storage);
+
+    // 2b. Create notification channels (once ever, persisted).
+    // Fire-and-forget — has internal timeout, never blocks boot.
+    initBackgroundGongs();
 
     // 3. Mount tab bar
     const appRoot = document.getElementById('app');

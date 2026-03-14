@@ -6,7 +6,7 @@ import { navigateTo } from '../router.js';
 import { analyzeSession } from '../../bio/bio-math-engine.js';
 import { generateMockTelemetry } from '../../bio/mock-data.js';
 import * as healthConnect from '../../bio/health-connect-service.js';
-import { checkExactAlarmPermission, requestExactAlarmSetting, initBackgroundGongs, scheduleBackgroundGongs } from '../../timer/background-gong.js';
+import { checkExactAlarmPermission, requestExactAlarmSetting, scheduleBackgroundGongs } from '../../timer/background-gong.js';
 
 let _storage = null;
 let _timerDisplay = null;
@@ -269,13 +269,13 @@ async function _onStart() {
     _dateInterval = null;
     _showStartTime();
 
-    // Init and schedule FIRST — must not be blocked by anything.
-    // checkExactNotificationSetting() can hang on some devices; run it after,
-    // fire-and-forget so it never prevents initBackgroundGongs from running.
-    await initBackgroundGongs();
+    // Schedule gongs — uses static import, no plugin loading to hang.
+    // initBackgroundGongs() already ran at boot (main.js).
+    // Await is safe here: user just tapped Start, app is in foreground,
+    // and all async ops are native bridge calls with timeouts.
     await scheduleBackgroundGongs(0, 'sessionStart');
 
-    // UI-only exact alarm banner — fire-and-forget, safe to be slow
+    // Best-effort exact alarm banner
     _checkExactAlarmOnce();
 }
 

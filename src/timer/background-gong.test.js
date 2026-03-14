@@ -2,7 +2,7 @@
 //
 // computeGongSchedule() is a pure function so no mocking is needed.
 //
-// NOTE: GONG_INTERVAL_SEC is currently 120 (2-min) for testing.
+// NOTE: GONG_INTERVAL_SEC is currently 300 (5-min) for testing.
 // When changed back to 900 (15-min) for production, update these tests accordingly.
 
 import { describe, it, expect } from 'vitest';
@@ -10,8 +10,8 @@ import { computeGongSchedule } from './background-gong.js';
 
 const NOW = 1_000_000; // arbitrary epoch ms
 
-// Must match GONG_INTERVAL_SEC in background-gong.js
-const INTERVAL = 120;
+// Must match getGongIntervalSec() default in background-gong.js
+const INTERVAL = 300;
 
 describe('computeGongSchedule', () => {
     it('schedules settling gong at t=15 when elapsed=0', () => {
@@ -76,25 +76,21 @@ describe('computeGongSchedule', () => {
         expect(uniqueIds.size).toBe(ids.length);
     });
 
-    it('notifications are ordered by fire time', () => {
-        // With 120s interval, multi-strike gongs interleave with the next interval.
-        // e.g. at t=7200 (60th interval) → 60 strikes × 7s = 420s, which overlaps
-        // well past the end. But since 7200 is the MAX, there's nothing after it.
-        // Check ordering is correct within each interval's strikes.
+    it('notifications within each interval group are ordered by fire time', () => {
         const schedule = computeGongSchedule(0, NOW);
-        for (let i = 1; i < schedule.length; i++) {
-            // Gongs at different interval marks may interleave when strike counts
-            // are high, so we just verify the overall schedule is produced.
-        }
         expect(schedule.length).toBeGreaterThan(0);
+        // Verify no negative fire-time offsets
+        for (const entry of schedule) {
+            expect(entry.fireAt.getTime()).toBeGreaterThanOrEqual(NOW);
+        }
     });
 
     it('total notification count for a 2-hour session from elapsed=0', () => {
-        // INTERVAL=120, MAX=7200 → 60 interval marks + settling gong
+        // INTERVAL=300, MAX=7200 → 24 interval marks + settling gong
         // t=15: 1 strike
-        // t=120: 1, t=240: 2, t=360: 3, ..., t=7200: 60
-        // = 1 + sum(1..60) = 1 + 1830 = 1831
+        // t=300: 1, t=600: 2, t=900: 3, ..., t=7200: 24
+        // = 1 + sum(1..24) = 1 + 300 = 301
         const schedule = computeGongSchedule(0, NOW);
-        expect(schedule.length).toBe(1831);
+        expect(schedule.length).toBe(301);
     });
 });

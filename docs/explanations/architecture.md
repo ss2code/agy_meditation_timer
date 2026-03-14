@@ -42,12 +42,13 @@ Meditation Timer is a Vite-bundled PWA that runs as a standalone web app and is 
 The single entry point. `boot()` runs once:
 1. Creates the storage adapter (Filesystem on native, LocalStorage on web)
 2. Runs v1→v2 migration
-3. Mounts all views and the tab bar
-4. Initializes the hash-based router with view-render callbacks
-5. Registers the service worker
-6. Exposes `window.meditationDebug` for console tooling
+3. Initializes background gong notification channels via `initBackgroundGongs()` (native only, fire-and-forget)
+4. Mounts all views and the tab bar
+5. Initializes the hash-based router with view-render callbacks
+6. Registers the service worker
+7. Exposes `window.meditationDebug` for console tooling and mounts a hidden Dev Panel toggle
 
-**Key design**: `main.js` is the only place that constructs the `storage` instance, which is then passed down to all views. This is manual dependency injection — no framework.
+**Key design**: `main.js` is the only place that constructs the `storage` instance, which is then passed down to all views. This is manual dependency injection — no framework. `main.js` also scaffolds dev-mode tools like `simulateBioSession` and the visual Dev Panel.
 
 ---
 
@@ -57,7 +58,7 @@ The single entry point. `boot()` runs once:
 |------|----------------|
 | `timer.js` | Wall-clock elapsed time, start/pause/finish, gong scheduling |
 | `gong.js` | `Gong` class: Web Audio API additive synthesis, 15s resonant sound |
-| `background-gong.js` | Schedules `@capacitor/local-notifications` when screen locks; cancels on resume |
+| `background-gong.js` | Schedules `@capacitor/local-notifications` when screen locks; manages notification channels, custom sounds, intervals, and diagnostic logging; cancels on resume |
 
 **Wall-clock design** (`timer.js`): Uses `Date.now()` not a tick counter. Android throttles `setInterval` when screen is off — a counter would drift. Elapsed = `floor((Date.now() - resumeWallTime) / 1000) + accumulatedBeforePause`.
 

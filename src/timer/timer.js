@@ -6,7 +6,7 @@
 
 import { Gong } from './gong.js';
 import { formatTime } from '../utils/date-helpers.js';
-import { scheduleBackgroundGongs, cancelBackgroundGongs, getGongIntervalSec } from './background-gong.js';
+import { scheduleBackgroundGongs, cancelBackgroundGongs, getGongIntervalSec, startMeditationForegroundService, stopMeditationForegroundService } from './background-gong.js';
 
 export const gong = new Gong();
 
@@ -81,6 +81,8 @@ export function startTimer() {
     sessionStartTimestamp = sessionStartTimestamp || new Date().toISOString();
     _resumeWallTime = Date.now();
 
+    startMeditationForegroundService();
+
     timerId = setInterval(() => {
         const prevElapsed = elapsedTime;
         _syncElapsed();
@@ -107,6 +109,7 @@ export function pauseTimer() {
     _resumeWallTime = null;
 
     cancelBackgroundGongs('pauseTimer');
+    stopMeditationForegroundService();
 }
 
 /**
@@ -138,22 +141,24 @@ export function finishTimer() {
 /**
  * Called when the page becomes visible again (e.g. screen unlock).
  *
- * DIAGNOSTIC MODE: does NOT cancel notifications — both Web Audio and Android
- * notifications run independently so the user can identify which mechanism
- * produced the sound (metallic gong = Web Audio, default chime = notification).
- *
- * Syncs elapsed time and fires any catch-up Web Audio gongs.
+ * Notifications handled gongs while backgrounded, so we:
+ *   1. Cancel remaining notifications (Web Audio takes over in foreground)
+ *   2. Skip Web Audio catch-up (notifications already played those gongs)
+ *   3. Reschedule for the next time the user backgrounds
  */
 export function handleVisibilityResume() {
     if (!timerId) return;
-    // DIAGNOSTIC: no cancelBackgroundGongs() — let notifications keep firing
+
+    cancelBackgroundGongs('visibilityResume');
+
     _syncElapsed();
     if (onTickCallback) onTickCallback(elapsedTime);
-    _checkGongs(_lastGongCheckTime, elapsedTime);
+
+    // Do NOT call _checkGongs() here — notifications already played gongs
+    // that fired while backgrounded. Just advance the checkpoint.
     _lastGongCheckTime = elapsedTime;
 
-    // Reschedule while in foreground (reliable) so new gongs are registered
-    // for any times beyond what was originally scheduled.
+    // Reschedule so gongs are ready for the next time the user backgrounds
     scheduleBackgroundGongs(elapsedTime, 'visibilityResume');
 }
 

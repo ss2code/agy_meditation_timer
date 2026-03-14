@@ -46,6 +46,11 @@
          setAndAllowWhileIdle() which Doze mode batches, silencing 15-min/30-min gongs. -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
+    <!-- Foreground service permissions for background gong resilience -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+
+
     <!-- Health Connect permissions (Phase 6) -->
     <uses-permission android:name="android.permission.health.READ_HEART_RATE"/>
     <uses-permission android:name="android.permission.health.READ_HEART_RATE_VARIABILITY_RMSSD"/>
