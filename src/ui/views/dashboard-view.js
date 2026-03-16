@@ -34,7 +34,7 @@ export async function renderDashboardView() {
     for (const { label, sessions: group } of groups) {
         html += `<div class="history-group"><h3 class="history-group-label">${label}</h3><ul class="history-list">`;
         group.forEach((session) => {
-            const date = new Date(session.endTimestamp || session.startTimestamp);
+            const date = new Date(session.startTimestamp || session.endTimestamp);
             const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             const qualityBadge = session.insights?.sessionQuality
                 ? `<span class="quality-badge quality-badge--${escapeHtml(session.insights.sessionQuality)}">${escapeHtml(_qualityLabel(session.insights.sessionQuality))}</span>`

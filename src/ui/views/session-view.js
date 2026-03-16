@@ -37,7 +37,7 @@ export async function renderSessionView(params) {
         return;
     }
 
-    const date = new Date(session.endTimestamp || session.startTimestamp);
+    const date = new Date(session.startTimestamp || session.endTimestamp);
     const dateStr = date.toLocaleDateString([], {
         weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
     });

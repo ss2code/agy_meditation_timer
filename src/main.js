@@ -25,7 +25,7 @@ import { PROFILE_RESTLESS, PROFILE_DEEP, PROFILE_SOMNOLENT } from './bio/mock-da
 import * as healthConnect from './bio/health-connect-service.js';
 import { initBackgroundGongs, getDiagnosticLogs, clearDiagnosticLogs, getGongIntervalSec, setGongIntervalSec, getUseDefaultSound, setUseDefaultSound } from './timer/background-gong.js';
 
-const APP_VERSION = 'v8.5';
+const APP_VERSION = 'v8.6';
 
 // ── Bio Dev Panel ────────────────────────────────────────────────────────────
 
