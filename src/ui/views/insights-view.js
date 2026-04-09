@@ -1,6 +1,6 @@
 // insights-view.js — Longitudinal stats: weekly/monthly, streak, 30-day bar chart
 
-import { formatDuration, getWeekStart, computeStreak, getLast30DaysData } from '../../utils/date-helpers.js';
+import { formatDuration, getWeekStart, computeStreak, getLast30DaysData, getSessionReferenceDate } from '../../utils/date-helpers.js';
 import { createChart, barChartConfig, lineChartConfig } from '../components/chart-panel.js';
 
 let _storage = null;
@@ -24,7 +24,7 @@ export async function renderInsightsView() {
 
     // Weekly stats
     const weekSessions = sessions.filter(
-        (s) => new Date(s.endTimestamp || s.startTimestamp) >= weekStart
+        (s) => getSessionReferenceDate(s) >= weekStart
     );
     const weekTotal = weekSessions.reduce((sum, s) => sum + s.duration, 0);
 
@@ -35,7 +35,7 @@ export async function renderInsightsView() {
 
     // Monthly stats
     const monthSessions = sessions.filter((s) => {
-        const d = new Date(s.endTimestamp || s.startTimestamp);
+        const d = getSessionReferenceDate(s);
         return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
     });
     const monthTotal = monthSessions.reduce((sum, s) => sum + s.duration, 0);
@@ -48,11 +48,11 @@ export async function renderInsightsView() {
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     const settleData = sessions
         .filter((s) => {
-            const d = new Date(s.endTimestamp || s.startTimestamp);
+            const d = getSessionReferenceDate(s);
             return d >= thirtyDaysAgo && s.insights?.settleTime?.seconds != null;
         })
         .map((s) => ({
-            x: new Date(s.endTimestamp || s.startTimestamp).toISOString(),
+            x: getSessionReferenceDate(s).toISOString(),
             y: parseFloat((s.insights.settleTime.seconds / 60).toFixed(1)),
         }))
         .sort((a, b) => new Date(a.x) - new Date(b.x));

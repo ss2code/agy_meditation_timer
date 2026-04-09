@@ -1,5 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { computeStreak, getLast30DaysData, formatDuration, isSameDay } from './date-helpers.js';
+import {
+    computeStreak,
+    getLast30DaysData,
+    formatDuration,
+    isSameDay,
+    getSessionReferenceDate,
+} from './date-helpers.js';
 
 // Helper: build a session whose end timestamp is N days ago
 function sessionAt(daysAgo, durationSecs = 1800) {
@@ -83,5 +89,24 @@ describe('isSameDay', () => {
     });
     it('returns false for different dates', () => {
         expect(isSameDay(new Date('2026-03-06'), new Date('2026-03-07'))).toBe(false);
+    });
+});
+
+describe('getSessionReferenceDate', () => {
+    it('prefers startTimestamp over endTimestamp', () => {
+        const d = getSessionReferenceDate({
+            startTimestamp: '2026-04-09T10:00:00.000Z',
+            endTimestamp: '2026-04-09T10:30:00.000Z',
+            duration: 1800,
+        });
+        expect(d.toISOString()).toBe('2026-04-09T10:00:00.000Z');
+    });
+
+    it('falls back to endTimestamp when startTimestamp is missing', () => {
+        const d = getSessionReferenceDate({
+            endTimestamp: '2026-04-09T10:30:00.000Z',
+            duration: 1800,
+        });
+        expect(d.toISOString()).toBe('2026-04-09T10:00:00.000Z');
     });
 });

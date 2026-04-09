@@ -1,7 +1,6 @@
 // timer-view.js — Timer screen: display, controls, mini stats, recent sessions
 
-import { formatTime, formatDuration, formatHeaderDate, isSameDay, getWeekStart, getLast7DaysCounts } from '../../utils/date-helpers.js';
-import { escapeHtml } from '../../utils/escape-html.js';
+import { formatTime, formatDuration, formatHeaderDate, isSameDay, getWeekStart, getLast7DaysCounts, getSessionReferenceDate } from '../../utils/date-helpers.js';
 import { startTimer, pauseTimer, finishTimer, isRunning, onTick, onSessionSave, sessionStartTimestamp } from '../../timer/timer.js';
 import { navigateTo } from '../router.js';
 import { analyzeSession } from '../../bio/bio-math-engine.js';
@@ -360,18 +359,14 @@ export async function renderHistory() {
     }
 
     recent.forEach((session) => {
-        const dateStr = session.endTimestamp || session.startTimestamp;
-        const date = new Date(dateStr);
+        const date = getSessionReferenceDate(session);
         const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         const dateString = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
-        const qualityBadge = session.insights?.sessionQuality
-            ? ` <span class="quality-badge quality-badge--${escapeHtml(session.insights.sessionQuality)}">${escapeHtml(_qualityLabel(session.insights.sessionQuality))}</span>`
-            : '';
 
         const li = document.createElement('li');
         li.className = 'history-item';
         li.innerHTML = `
-            <span>Meditation (${formatDuration(session.duration)})${qualityBadge}</span>
+            <span>Meditation (${formatDuration(session.duration)})</span>
             <span class="history-time">${dateString}, ${timeString}</span>
         `;
         li.style.cursor = 'pointer';
@@ -389,7 +384,7 @@ export async function renderStats() {
 
     let todaySecs = 0, weekSecs = 0, monthSecs = 0;
     sessions.forEach((s) => {
-        const d = new Date(s.endTimestamp || s.startTimestamp);
+        const d = getSessionReferenceDate(s);
         if (isSameDay(d, now)) todaySecs += s.duration;
         if (d >= weekStart) weekSecs += s.duration;
         if (d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()) {
@@ -416,12 +411,4 @@ export async function renderStats() {
             }).join('')
         }</div>`;
     }
-}
-
-function _qualityLabel(quality) {
-    const map = {
-        restless: 'Restless', settling: 'Settling', absorbed: 'Absorbed',
-        deep_absorption: 'Deep', somnolent: 'Drowsy',
-    };
-    return map[quality] || quality;
 }

@@ -71,6 +71,22 @@ export function formatHeaderDate(d) {
 }
 
 /**
+ * Resolve the canonical session timestamp for display/grouping.
+ * Prefer startTimestamp; if absent, derive start from endTimestamp-duration.
+ * @param {{startTimestamp?: string, endTimestamp?: string, duration?: number}} session
+ * @returns {Date}
+ */
+export function getSessionReferenceDate(session) {
+    if (session?.startTimestamp) return new Date(session.startTimestamp);
+    if (session?.endTimestamp) {
+        const endMs = new Date(session.endTimestamp).getTime();
+        const durationMs = Math.max(0, (session.duration || 0) * 1000);
+        return new Date(endMs - durationMs);
+    }
+    return new Date(0);
+}
+
+/**
  * Compute the current meditation streak in consecutive days.
  * A day counts if at least one session ended on that day.
  * Counts backwards from today.
@@ -81,7 +97,7 @@ export function computeStreak(sessions) {
     if (!sessions.length) return 0;
 
     const daySet = new Set(sessions.map((s) => {
-        const d = new Date(s.endTimestamp || s.startTimestamp);
+        const d = getSessionReferenceDate(s);
         d.setHours(0, 0, 0, 0);
         return d.getTime();
     }));
@@ -114,7 +130,7 @@ export function getLast7DaysCounts(sessions) {
         const d = new Date(weekSunday);
         d.setDate(weekSunday.getDate() + i);
         const count = sessions.filter(s => {
-            const sd = new Date(s.endTimestamp || s.startTimestamp);
+            const sd = getSessionReferenceDate(s);
             return isSameDay(sd, d);
         }).length;
         return { count, isToday: i === todayDow };
@@ -145,7 +161,7 @@ export function getLast30DaysData(sessions, days = 30) {
         const label = dayStart.toLocaleDateString([], { month: 'short', day: 'numeric' });
         const mins = sessions
             .filter((s) => {
-                const d = new Date(s.endTimestamp || s.startTimestamp);
+                const d = getSessionReferenceDate(s);
                 return d >= dayStart && d <= dayEnd;
             })
             .reduce((sum, s) => sum + Math.floor(s.duration / 60), 0);

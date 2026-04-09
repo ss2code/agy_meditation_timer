@@ -1,22 +1,29 @@
 // session-view.js — Session detail: bio insights summary + bio-signal charts
 
-import { formatDuration } from '../../utils/date-helpers.js';
+import { formatDuration, getSessionReferenceDate } from '../../utils/date-helpers.js';
 import { escapeHtml } from '../../utils/escape-html.js';
 import { navigateTo } from '../router.js';
 import {
     createChart,
     annotatedLineChartConfig,
-    dualLineChartConfig,
 } from '../components/chart-panel.js';
 import {
     analyzeSession,
-    extractRespirationFromHRV,
-    extractRespirationFromHR,
 } from '../../bio/bio-math-engine.js';
 import * as healthConnect from '../../bio/health-connect-service.js';
+import {
+    buildSessionSummary,
+    formatHeartRateDelta,
+} from '../session-language.js';
 
 let _storage = null;
 const _activeCharts = [];
+
+export function shouldShowWatchEvidenceCharts(session, telemetry) {
+    return session?.telemetrySource === 'health_connect'
+        && Array.isArray(telemetry?.hr)
+        && telemetry.hr.length > 0;
+}
 
 export function mountSessionView(storage) {
     _storage = storage;
@@ -37,7 +44,7 @@ export async function renderSessionView(params) {
         return;
     }
 
-    const date = new Date(session.startTimestamp || session.endTimestamp);
+    const date = getSessionReferenceDate(session);
     const dateStr = date.toLocaleDateString([], {
         weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
     });
@@ -54,6 +61,8 @@ export async function renderSessionView(params) {
         }
     }
 
+    const showEvidenceCharts = shouldShowWatchEvidenceCharts(session, telemetry);
+
     container.innerHTML = `
         <div class="view-header">
             <button class="back-btn" id="sessionBackBtn">← Back</button>
@@ -65,23 +74,43 @@ export async function renderSessionView(params) {
             <div class="session-duration">${formatDuration(session.duration)}</div>
         </div>
 
-        ${_insightsCard(insights, session)}
+        ${_insightsCard(insights, session, telemetry)}
 
-        ${telemetry ? _diagnosticsPanel(telemetry, insights, session) : ''}
-        ${telemetry ? _chartSectionHTML(insights) : ''}
+        ${telemetry ? _evidencePanel(telemetry, insights, session, showEvidenceCharts) : ''}
     `;
 
     document.getElementById('sessionBackBtn')?.addEventListener('click', () => {
         navigateTo('history');
     });
 
-    if (telemetry) {
-        await _renderCharts(container, telemetry, insights);
+    if (telemetry && showEvidenceCharts) {
+        _mountEvidencePanel(container, telemetry, insights);
     }
 
     // Always show "Update Health Connect" on native — lets user pull fresh/additional data
     if (window.Capacitor?.isNativePlatform?.()) {
         _addHCUpdateButton(container, session, telemetry);
+    }
+}
+
+function _mountEvidencePanel(container, telemetry, insights) {
+    const panel = container.querySelector('.evidence-panel');
+    if (!panel) return;
+
+    const mountCharts = async () => {
+        if (panel.dataset.chartsMounted === '1') return;
+        await _renderCharts(container, telemetry, insights);
+        panel.dataset.chartsMounted = '1';
+    };
+
+    panel.addEventListener('toggle', () => {
+        if (panel.open) {
+            mountCharts().catch((err) => console.error('[charts] failed to mount', err));
+        }
+    });
+
+    if (panel.open) {
+        mountCharts().catch((err) => console.error('[charts] failed to mount', err));
     }
 }
 
@@ -92,10 +121,6 @@ function _chartSectionHTML(insights) {
             <div class="summary-card">
                 <h3 class="card-heading">Heart Rate</h3>
                 <div class="chart-canvas-wrap"><canvas id="chart-hr"></canvas></div>
-            </div>
-            <div class="summary-card">
-                <h3 class="card-heading">HRV / Respiration</h3>
-                <div class="chart-canvas-wrap"><canvas id="chart-hrv"></canvas></div>
             </div>
             ${hasSpo2 ? `
             <div class="summary-card">
@@ -108,14 +133,13 @@ function _chartSectionHTML(insights) {
 }
 
 async function _renderCharts(container, telemetry, insights) {
-    const { hr = [], hrv = [], spo2 = [], resp = [] } = telemetry;
+    const { hr = [], spo2 = [] } = telemetry;
 
     // Use the first HR sample as the session start anchor for elapsed-time x-axis
     const startMs = hr.length ? new Date(hr[0].timestamp).getTime() : 0;
     const toElapsed = (isoStr) => (new Date(isoStr).getTime() - startMs) / 1000;
 
     const hrData   = hr.map((p) => ({ x: toElapsed(p.timestamp), y: p.value }));
-    const hrvData  = hrv.map((p) => ({ x: toElapsed(p.timestamp), y: p.value }));
     const spo2Data = spo2.map((p) => ({ x: toElapsed(p.timestamp), y: p.value }));
 
     // All charts share the same x-axis range (session duration from HR data)
@@ -133,26 +157,6 @@ async function _renderCharts(container, telemetry, insights) {
         ));
     }
 
-    // — HRV / Respiration dual chart —
-    // Respiration series: direct from HC, or RSA-derived from dense HRV/HR
-    const rawResp = resp.length
-        ? resp.map((p) => ({ timestamp: p.timestamp, breathsPerMinute: p.value }))
-        : hrv.length >= 10
-            ? extractRespirationFromHRV(hrv)
-            : extractRespirationFromHR(hr);
-    const respData = rawResp.map((p) => ({ x: toElapsed(p.timestamp), y: p.breathsPerMinute }));
-    const hrvCanvas = container.querySelector('#chart-hrv');
-    if (hrvCanvas && (hrvData.length || respData.length)) {
-        const hLabel = hrv.length >= 10 ? 'RR (ms)' : 'RMSSD (ms)';
-        _activeCharts.push(await createChart(
-            hrvCanvas,
-            dualLineChartConfig(hLabel, hrvData, 'Resp (br/m)', respData, {
-                color1: '#42A5F5', color2: '#66BB6A',
-                yLabel1: 'ms', yLabel2: 'br/m', xElapsed: true, xMax,
-            })
-        ));
-    }
-
     // — SpO2 chart (torpor periods highlighted) —
     const spo2Annotations = (insights?.spo2?.torpidPeriods || []).map((p) => ({
         type: 'box', xMin: toElapsed(p.start), xMax: toElapsed(p.end), color: 'rgba(66,165,245,0.18)',
@@ -166,11 +170,11 @@ async function _renderCharts(container, telemetry, insights) {
     }
 }
 
-function _insightsCard(insights, session) {
+function _insightsCard(insights, session, telemetry) {
     if (!insights) {
         return `
             <div class="summary-card">
-                <h3 class="card-heading">Bio Insights</h3>
+                <h3 class="card-heading">Session Note</h3>
                 <p class="empty-state">No bio-data for this session.</p>
             </div>
         `;
@@ -180,36 +184,49 @@ function _insightsCard(insights, session) {
     const sourceBadge = session?.telemetrySource
         ? `<span class="source-badge ${isHC ? 'source-badge--hc' : 'source-badge--mock'}">${isHC ? 'Health Connect' : 'Mock Data'}</span>`
         : '';
-
-    const qualityBadge = insights.sessionQuality
-        ? `<div class="session-quality quality-badge quality-badge--${escapeHtml(insights.sessionQuality)}">${escapeHtml(_qualityLabel(insights.sessionQuality))}</div>`
-        : '';
-
-    const respConf = insights.respirationRate?.confidence;
-    const respSub = respConf && respConf !== 'none' && respConf !== 'high'
-        ? `<span class="insight-sub">${respConf} confidence</span>`
-        : '';
+    const summary = buildSessionSummary({ hr: telemetry?.hr || [], insights });
 
     return `
-        <div class="summary-card">
-            <h3 class="card-heading">Bio Insights ${sourceBadge}</h3>
-            <div class="insight-grid">
+        <div class="summary-card session-summary-card">
+            <h3 class="card-heading">Session Note ${sourceBadge}</h3>
+            <div class="insight-grid insight-grid--summary">
                 <div class="insight-item">
                     <span class="insight-label">Settle Time</span>
                     <span class="insight-value">${insights.settleTime ? formatDuration(insights.settleTime.seconds) : '—'}</span>
                 </div>
                 <div class="insight-item">
+                    <span class="insight-label">HR Change</span>
+                    <span class="insight-value">${summary.delta != null ? formatHeartRateDelta(summary.delta) : '—'}</span>
+                </div>
+            </div>
+            <p class="session-summary-copy">${escapeHtml(summary.description)}</p>
+        </div>
+    `;
+}
+
+function _evidencePanel(telemetry, insights, session, showEvidenceCharts) {
+    const summary = buildSessionSummary({ hr: telemetry?.hr || [], insights });
+
+    return `
+        <details class="evidence-panel" open>
+            <summary class="card-heading">See Session Evidence</summary>
+            <div class="evidence-summary-grid">
+                <div class="evidence-stat">
                     <span class="insight-label">Avg HR</span>
                     <span class="insight-value">${insights.avgHR != null ? `${insights.avgHR} bpm` : '—'}</span>
                 </div>
-                <div class="insight-item">
-                    <span class="insight-label">Respiration</span>
-                    <span class="insight-value">${insights.respirationRate?.average != null ? `${insights.respirationRate.average.toFixed(1)} br/m` : '—'}</span>
-                    ${respSub}
+                <div class="evidence-stat">
+                    <span class="insight-label">Lowest HR</span>
+                    <span class="insight-value">${insights.minHR != null ? `${insights.minHR} bpm` : '—'}</span>
+                </div>
+                <div class="evidence-stat">
+                    <span class="insight-label">HR Change</span>
+                    <span class="insight-value">${summary.delta != null ? formatHeartRateDelta(summary.delta) : '—'}</span>
                 </div>
             </div>
-            ${qualityBadge}
-        </div>
+            ${showEvidenceCharts ? _chartSectionHTML(insights) : ''}
+            ${_diagnosticsPanel(telemetry, insights, session)}
+        </details>
     `;
 }
 
@@ -332,12 +349,4 @@ function _addHCUpdateButton(container, session, existingTelemetry) {
         }
     });
     card.appendChild(btn);
-}
-
-function _qualityLabel(quality) {
-    const map = {
-        restless: 'Restless', settling: 'Settling', absorbed: 'Absorbed',
-        deep_absorption: 'Deep Absorption', somnolent: 'Somnolent',
-    };
-    return map[quality] || quality;
 }

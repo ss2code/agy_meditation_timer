@@ -1,8 +1,9 @@
 // dashboard-view.js — History list grouped by date
 
-import { formatDuration, isSameDay } from '../../utils/date-helpers.js';
+import { formatDuration, isSameDay, getSessionReferenceDate } from '../../utils/date-helpers.js';
 import { escapeHtml } from '../../utils/escape-html.js';
 import { navigateTo } from '../router.js';
+import { buildHistorySummary } from '../session-language.js';
 
 let _storage = null;
 let _onDevPanelOpen = null;
@@ -34,18 +35,18 @@ export async function renderDashboardView() {
     for (const { label, sessions: group } of groups) {
         html += `<div class="history-group"><h3 class="history-group-label">${label}</h3><ul class="history-list">`;
         group.forEach((session) => {
-            const date = new Date(session.startTimestamp || session.endTimestamp);
+            const date = getSessionReferenceDate(session);
             const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            const qualityBadge = session.insights?.sessionQuality
-                ? `<span class="quality-badge quality-badge--${escapeHtml(session.insights.sessionQuality)}">${escapeHtml(_qualityLabel(session.insights.sessionQuality))}</span>`
-                : '';
+            const summary = buildHistorySummary(session);
             html += `
                 <li class="history-item history-item--clickable" data-id="${escapeHtml(session.id)}">
-                    <div class="history-item__main">
-                        <span class="history-item__duration">${formatDuration(session.duration)}</span>
-                        ${qualityBadge}
+                    <div class="history-item__journal">
+                        <div class="history-item__topline">
+                            <span class="history-item__duration">${formatDuration(session.duration)}</span>
+                            <span class="history-time">${timeStr}</span>
+                        </div>
+                        <p class="history-item__summary">${escapeHtml(summary)}</p>
                     </div>
-                    <span class="history-time">${timeStr}</span>
                 </li>
             `;
         });
@@ -77,7 +78,7 @@ function _groupByDate(sessions) {
 
     const map = new Map();
     sessions.forEach((s) => {
-        const d = new Date(s.endTimestamp || s.startTimestamp);
+        const d = getSessionReferenceDate(s);
         const dayKey = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
         if (!map.has(dayKey)) {
             let label;
@@ -90,12 +91,4 @@ function _groupByDate(sessions) {
     });
 
     return Array.from(map.values());
-}
-
-function _qualityLabel(quality) {
-    const map = {
-        restless: 'Restless', settling: 'Settling', absorbed: 'Absorbed',
-        deep_absorption: 'Deep', somnolent: 'Drowsy',
-    };
-    return map[quality] || quality;
 }
