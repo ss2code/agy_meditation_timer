@@ -19,9 +19,10 @@ const DURATION    = 15.0;  // seconds — matches the updated gong.js
 const NUM_SAMPLES = Math.round(SAMPLE_RATE * DURATION);
 
 // Synthesis parameters — kept in sync with gong.js
-const BASE_FREQ  = 220; // A3 — above phone speaker rolloff, avoids chassis resonance
-const HARMONICS  = [1, 2.5, 3.2, 4.1, 5.7]; // inharmonic for metallic timbre
-const WEIGHTS    = [1, 0.6, 0.4, 0.3, 0.2];
+// Bell-like Chladni partials, headroom below clipping for thin-chassis phones.
+const BASE_FREQ  = 196; // G3
+const HARMONICS  = [1, 2.0, 2.76, 5.40];
+const WEIGHTS    = [1.0, 0.45, 0.25, 0.08];
 
 const pcm = new Float32Array(NUM_SAMPLES);
 
@@ -29,11 +30,11 @@ for (let i = 0; i < NUM_SAMPLES; i++) {
     const t = i / SAMPLE_RATE;
     let sample = 0;
     HARMONICS.forEach((h, idx) => {
-        const amp = WEIGHTS[idx] * Math.exp(-0.3 * t); // slow decay → longer sustain
+        const amp = WEIGHTS[idx] * Math.exp(-0.3 * t);
         sample += amp * Math.sin(2 * Math.PI * BASE_FREQ * h * t);
     });
-    const envelope = t < 0.05 ? t / 0.05 : Math.exp(-0.1 * (t - 0.05)); // gentle fade
-    pcm[i] = sample * envelope * 0.5;
+    const envelope = t < 0.08 ? t / 0.08 : Math.exp(-0.1 * (t - 0.08));
+    pcm[i] = sample * envelope * 0.4;
 }
 
 // Convert Float32 → 16-bit signed PCM

@@ -16,27 +16,32 @@ export class Gong {
     }
 
     _createGongBuffer() {
-        const duration = 15.0; // longer sustain
+        const duration = 15.0;
         const sampleRate = this.ctx.sampleRate;
         const length = sampleRate * duration;
         const buffer = this.ctx.createBuffer(1, length, sampleRate);
         const data = buffer.getChannelData(0);
 
-        const baseFreq = 220; // A3 — above phone speaker rolloff (~200 Hz), avoids chassis resonance
-        const harmonics = [1, 2.5, 3.2, 4.1, 5.7]; // Inharmonic for metallic timbre
-        const weights = [1, 0.6, 0.4, 0.3, 0.2];
+        // Bell-like Chladni partials (circular plate modes) — warmer than the
+        // previous metallic ratios, much less harshness in the 700-1300 Hz band
+        // where thin-chassis phone speakers struggle.
+        const baseFreq = 196; // G3 — warm, still above ~150 Hz chassis rolloff
+        const harmonics = [1, 2.0, 2.76, 5.40];
+        const weights   = [1.0, 0.45, 0.25, 0.08];
+        // Sum of weights = 1.78 → with 0.4 master gain peak ≤ 0.71, no clipping.
 
         for (let i = 0; i < length; i++) {
             const t = i / sampleRate;
             let sample = 0;
 
             harmonics.forEach((h, idx) => {
-                const amp = weights[idx] * Math.exp(-0.3 * t); // slower decay
+                const amp = weights[idx] * Math.exp(-0.3 * t);
                 sample += amp * Math.sin(2 * Math.PI * baseFreq * h * t);
             });
 
-            const envelope = t < 0.05 ? t / 0.05 : Math.exp(-0.1 * (t - 0.05)); // gentle fade
-            data[i] = sample * envelope * 0.5;
+            // Slightly longer attack (80ms) to soften the transient strike.
+            const envelope = t < 0.08 ? t / 0.08 : Math.exp(-0.1 * (t - 0.08));
+            data[i] = sample * envelope * 0.4;
         }
 
         this.buffer = buffer;
@@ -50,11 +55,14 @@ export class Gong {
 
         const filter = this.ctx.createBiquadFilter();
         filter.type = 'lowpass';
-        filter.frequency.setValueAtTime(2000, time);
-        filter.frequency.exponentialRampToValueAtTime(300, time + 14);
+        // Lower initial cutoff softens the metallic edge on small speakers.
+        filter.frequency.setValueAtTime(1200, time);
+        filter.frequency.exponentialRampToValueAtTime(280, time + 14);
 
         const gain = this.ctx.createGain();
-        gain.gain.setValueAtTime(1.5, time);
+        // Unity gain — buffer is already at safe peak (~0.71). Extra gain
+        // here was the previous source of post-buffer clipping.
+        gain.gain.setValueAtTime(1.0, time);
         gain.gain.exponentialRampToValueAtTime(0.001, time + 15);
 
         source.connect(filter);
