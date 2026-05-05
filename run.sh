@@ -24,7 +24,6 @@ EMULATOR="$ANDROID_HOME/emulator/emulator"
 AVD_NAME="Meditation_Phone"
 APP_ID="com.shyamsuri.meditationtimer"
 APK="$PROJECT_ROOT/android/app/build/outputs/apk/debug/app-debug.apk"
-WEB_PORT=8080
 # Persistent Gradle cache — survives ./run.sh --stop so distributions aren't re-downloaded
 GRADLE_HOME_DIR="$PROJECT_ROOT/.gradle-home"
 
@@ -50,16 +49,6 @@ if [ "$STOP" = true ]; then
     skip "Emulator not running"
   fi
 
-  # Stop the web server
-  WEB_PID=$(lsof -ti ":$WEB_PORT" 2>/dev/null || true)
-  if [ -n "$WEB_PID" ]; then
-    info "Stopping http-server (pid $WEB_PID) …"
-    kill "$WEB_PID" 2>/dev/null || true
-    success "Web server stopped"
-  else
-    skip "Web server not running"
-  fi
-
   # Clean up only the per-project Gradle cache (build outputs), not the distribution
   info "Cleaning Gradle project cache …"
   rm -rf /tmp/gradle-project-cache
@@ -74,16 +63,7 @@ fi
 # START mode
 # ══════════════════════════════════════════════════════════════════════════════
 
-# ── 1. Web server ───────────────────────────────────────────────────────────────
-if lsof -ti ":$WEB_PORT" &>/dev/null; then
-  skip "http-server already on :$WEB_PORT"
-else
-  info "Starting http-server on :$WEB_PORT …"
-  npx http-server "$PROJECT_ROOT/www" -p $WEB_PORT --silent &
-  success "Web server started → http://localhost:$WEB_PORT (serving www/)"
-fi
-
-# ── 2. Android emulator (AVD) ──────────────────────────────────────────────────
+# ── 1. Android emulator (AVD) ──────────────────────────────────────────────────
 if "$ADB" devices 2>/dev/null | grep -q "^emulator"; then
   skip "Android emulator already running"
 else
@@ -106,7 +86,7 @@ if [ -z "$EMULATOR_SERIAL" ]; then
 fi
 info "Targeting emulator: $EMULATOR_SERIAL"
 
-# ── 3. Build web sources into www/ via Vite, then cap sync ────────────────────
+# ── 2. Build web sources into www/ via Vite, then cap sync ────────────────────
 if [ "$SKIP_BUILD" = false ]; then
   info "Building web sources with Vite into www/ …"
   cd "$PROJECT_ROOT"
@@ -117,7 +97,7 @@ if [ "$SKIP_BUILD" = false ]; then
   npx cap sync android 2>&1 | grep -E "✔|error|warn" || true
 fi
 
-# ── 4. Build Android APK ───────────────────────────────────────────────────────
+# ── 3. Build Android APK ───────────────────────────────────────────────────────
 if [ "$SKIP_BUILD" = true ]; then
   skip "Gradle build skipped (--skip-build)"
   if [ ! -f "$APK" ]; then
@@ -133,10 +113,10 @@ else
   success "APK built → $APK"
 fi
 
-# ── 5. Force-stop any running instance ─────────────────────────────────────────
+# ── 4. Force-stop any running instance ─────────────────────────────────────────
 "$ADB" -s "$EMULATOR_SERIAL" shell am force-stop "$APP_ID" 2>/dev/null || true
 
-# ── 6. Install & launch ────────────────────────────────────────────────────────
+# ── 5. Install & launch ────────────────────────────────────────────────────────
 info "Installing APK …"
 "$ADB" -s "$EMULATOR_SERIAL" install -r "$APK" 2>&1 | grep -v "^$"
 
@@ -150,7 +130,6 @@ success "App launched on '$AVD_NAME'"
 
 echo ""
 echo -e "${GREEN}All done.${RESET}"
-echo "  Web:     http://localhost:$WEB_PORT"
 echo "  Android: $APP_ID running on $AVD_NAME"
 echo ""
 echo "  When finished: ./run.sh --stop"

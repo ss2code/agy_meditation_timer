@@ -1,4 +1,6 @@
 # Security Fixes Plan
+**Doc Status:** Current Reference
+
 
 **Created:** 2026-03-14
 **Last reviewed:** 2026-04-09

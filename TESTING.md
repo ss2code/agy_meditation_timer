@@ -1,45 +1,58 @@
-# How to Verify Gong Sounds
+# Testing Guide
+**Doc Status:** Current Reference
 
-Since waiting for 15, 30, or 45 minutes is impractical for testing, I've added a **Debug Mode** to help you verify the features quickly.
 
-## 1. Open the Developer Console
-- **Chrome/Edge**: Right-click anywhere on the page -> **Inspect** -> Click the **Console** tab.
-- **Safari**: Right-click -> **Inspect Element** -> **Console** (Enable "Show Develop menu in menu bar" in Safari Preferences > Advanced if you don't see this).
+## Run Automated Tests
 
-## 2. Test Audio Immediately
-To confirm your speakers work and the audio engine is active, type this into the console and press Enter:
+```bash
+npm test
+```
+
+Current baseline: **151 passing tests**.
+
+Primary coverage areas:
+- Timer wall-clock behavior and pause/resume semantics
+- Background gong schedule computation
+- Bio analysis (settle time, respiration extraction, torpor, session classification)
+- Storage migration and utility helpers
+- Session-language summary behavior
+
+## Manual Gong Verification (Web)
+
+Use browser DevTools console after pressing **Start**.
+
+### Immediate audio sanity check
+
 ```javascript
 meditationDebug.testGong()
 ```
-*Note: You must have interacted with the page (clicked anywhere) at least once for audio to play.*
 
-## 3. Fast Forward Time
-You can jump the timer to 5 seconds before a gong event.
+### Jump to upcoming gong boundaries
 
-### Test 15-Second Gong
-1. Refresh the page.
-2. Click **Start**.
-3. In the console, type:
-   ```javascript
-   meditationDebug.setTime(10)
-   ```
-   (This sets the timer to 00:10).
-4. Wait 5 seconds. You should hear **1 gong** at 00:15.
+```javascript
+meditationDebug.setTime(10)   // 15s cue in ~5s
+meditationDebug.setTime(895)  // 15-min cue in ~5s
+meditationDebug.setTime(1795) // 30-min cue in ~5s (2 strikes)
+```
 
-### Test 15-Minute Gong (1 Strike)
-1. Ensure the timer is running.
-2. Type:
-   ```javascript
-   meditationDebug.setTime(895)
-   ```
-   (This sets timer to 14:55).
-3. Wait 5 seconds. At 15:00, you should hear **1 gong**.
+## Manual Background Gong Verification (Android)
 
-### Test 30-Minute Gong (2 Strikes)
-1. Ensure the timer is running.
-2. Type:
-   ```javascript
-   meditationDebug.setTime(1795)
-   ```
-   (This sets timer to 29:55).
-3. Wait 5 seconds. At 30:00, you should hear **2 gongs** (spaced apart).
+1. Deploy using `./run.sh` (emulator) or `./deploy-phone.sh` (physical phone).
+2. Start a session.
+3. Lock the device before the next gong boundary.
+4. Confirm notification-driven gong fires while locked.
+5. Unlock and verify no duplicate catch-up gong is replayed.
+
+If needed, open Dev panel and inspect Gong Diagnostics logs.
+
+## Health Connect Verification
+
+1. Complete a short session on native Android.
+2. Allow Health Connect permission when prompted.
+3. Confirm session gets telemetry with source badge **Health Connect** in session view.
+4. Use **Update Health Connect** to re-query and verify data refresh.
+
+If HR data is unavailable, confirm fallback behavior:
+- session remains saved
+- telemetry source becomes `mock`
+- session still renders insights and evidence text

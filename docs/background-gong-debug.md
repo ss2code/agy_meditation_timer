@@ -1,4 +1,9 @@
 # Background Gong Bug — Debug Session Notes
+**Doc Status:** Historical Archive
+
+
+> Historical debug log. Root-cause timeline below is intentionally version-specific (v7.x-v8.x).
+> Current implementation reference for active architecture is in `README.md` and `docs/explanations/architecture.md`.
 
 ## The Bug (original)
 
@@ -85,7 +90,7 @@ The 5-minute intervals succeeded purely by accident: firing an alarm every 5 min
 
 ---
 
-## Current State (v8.1)
+## Current State (v9.1)
 
 ### Architecture: Scheduling Flow
 
@@ -148,7 +153,7 @@ The app shows an "Alarms & Reminders" permission banner. If user denies, gong ti
 may be imprecise but should still fire.
 
 ### Foreground Service capability (v8.1+ Solution)
-As of v8.1, the application uses `@capawesome-team/capacitor-android-foreground-service` to show a persistent "Meditation in progress" notification while the timer is running. This elevated priority effectively bypasses OEM battery killers and keeps the app process alive continuously, serving as the ultimate fix for precise gong timing on modern aggressive Android devices.
+As of v8.1 (and still in v9.1), the application uses `@capawesome-team/capacitor-android-foreground-service` to show a persistent "Meditation in progress" notification while the timer is running. This elevated priority reduces OEM battery-killer interruptions and keeps app process reliability high for longer sessions.
 
 ---
 

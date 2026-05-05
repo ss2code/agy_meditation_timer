@@ -1,0 +1,502 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>System Overview</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { max-width: 980px; margin: 2rem auto; padding: 0 1rem; font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  pre { background: #f5f5f5; padding: 1rem; border-radius: 6px; overflow-x: auto; }
+  code { background: #f0f0f0; padding: 0.1rem 0.3rem; border-radius: 3px; font-size: 0.9em; }
+  pre code { background: transparent; padding: 0; }
+  table { border-collapse: collapse; margin: 1rem 0; }
+  th, td { border: 1px solid #ccc; padding: 0.4rem 0.8rem; text-align: left; vertical-align: top; }
+  th { background: #f0f0f0; }
+  h1, h2, h3 { margin-top: 2rem; }
+  h1 { border-bottom: 2px solid #ccc; padding-bottom: 0.3rem; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2rem; }
+  blockquote { border-left: 4px solid #ccc; margin: 1rem 0; padding: 0 1rem; color: #555; }
+  .mermaid { background: white; padding: 1rem; border-radius: 6px; margin: 1rem 0; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #1e1e1e; color: #ddd; }
+    pre, code { background: #2a2a2a; }
+    th { background: #333; }
+    th, td { border-color: #444; }
+    .mermaid { background: #f5f5f5; }
+  }
+</style>
+</head>
+<body>
+<div id="content">Loading…</div>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({ startOnLoad: false, theme: "default" });
+
+  const md = String.raw`<!-- last-reviewed: 2026-05-05 -->
+<!-- sections: llm-bootstrap, features, architecture, components, code-map, data-flow, decisions, data-structures, extension-points, dependencies, operations, glossary, workflow -->
+
+# Meditation Timer — System Overview
+
+A living reference for both humans and future LLM sessions. Read **LLM Bootstrap** first if you're about to modify code; read **What It Does** first if you're a new contributor or stakeholder.
+
+> **HTML viewer:** open \x60docs/system-overview.html\x60 in any browser to see the diagrams rendered (the markdown is the source of truth; the HTML is a generated view).
+
+---
+
+## LLM Bootstrap {#llm-bootstrap}
+<!-- last-verified: 2026-05-05 -->
+
+**What this project is in one line:** A PWA meditation timer wrapped by Capacitor for Android, with wall-clock-accurate gongs (foreground Web Audio + background-scheduled local notifications), platform-conditional local session storage, and optional Health Connect bio telemetry that gets analyzed into per-session insights.
+
+**Invariants that must not break** (each pinned to live code):
+
+- **Wall-clock elapsed time** — never count \x60setInterval\x60 ticks; recompute from \x60Date.now() - _resumeWallTime + _accumulatedBeforePause\x60. Survives Android Doze / iOS background throttling. ([src/timer/timer.js:57–61](../src/timer/timer.js))
+- **Gong rule** — \x60t === 15\x60 → 1 strike; \x60t > 0 && t % intervalSec === 0\x60 → \x60t / intervalSec\x60 strikes. Same rule applies in foreground (Web Audio) and background (notification scheduling). ([src/timer/timer.js:64–72](../src/timer/timer.js), [src/timer/background-gong.js:179–200](../src/timer/background-gong.js))
+- **Notification channels MUST exist before scheduling.** Android 8+ silently drops notifications referencing a missing channel — alarm fires, nothing displays, no sound. \x60_ensureChannels()\x60 runs at boot AND inline before every \x60scheduleBackgroundGongs()\x60. ([src/timer/background-gong.js:108–145](../src/timer/background-gong.js), [src/timer/background-gong.js:219–221](../src/timer/background-gong.js))
+- **Foreground service is coupled to timer state.** \x60startTimer()\x60 starts it; \x60pauseTimer()\x60 and \x60finishTimer()\x60 stop it. Without it, Doze can kill the WebView and orphan scheduled notifications. ([src/timer/timer.js:84,112,124](../src/timer/timer.js), [src/timer/background-gong.js:282–305](../src/timer/background-gong.js))
+- **On \x60visibilitychange:visible\x60, cancel-then-reschedule.** Notifications already played gongs that fired while backgrounded — do NOT call \x60_checkGongs()\x60 on resume. ([src/timer/timer.js:149–163](../src/timer/timer.js))
+- **Storage adapter selected by platform.** \x60Capacitor.isNativePlatform()\x60 → \x60FilesystemAdapter\x60; otherwise \x60LocalStorageAdapter\x60. Mock adapter is for tests only. ([src/main.js:10–15](../src/main.js))
+- **Session schema is v2.** \x60schemaVersion: 2\x60. Migration from v1 (\x60meditation_history\x60 localStorage key) runs once, gated by \x60MIGRATION_FLAG = 'meditation_migration_v6_complete'\x60. Don't re-run; don't break the gate. ([src/storage/migration.js:5,22](../src/storage/migration.js))
+- **Session IDs are sanitized at the storage boundary.** \x60_validateId()\x60 rejects anything outside \x60[A-Za-z0-9_-]+\x60 to prevent path traversal in the filesystem adapter. ([src/storage/filesystem-adapter.js:14–18](../src/storage/filesystem-adapter.js))
+- **Router params are sanitized to \x60[A-Za-z0-9_-]\x60.** Defense in depth against hash-XSS. ([src/ui/router.js:33](../src/ui/router.js))
+- **\x60escapeHtml()\x60 is the only safe path for user data into HTML.** ([src/utils/escape-html.js:1–9](../src/utils/escape-html.js))
+- **\x60APP_VERSION\x60 is manually bumped; \x60CACHE_NAME\x60 is auto-bumped at build.** The \x60swCacheBuster\x60 Vite plugin rewrites \x60CACHE_NAME\x60 in the built \x60www/service-worker.js\x60 to \x60meditation-timer-<sha256(index.html)[:10]>\x60 after every \x60vite build\x60. The literal \x60'meditation-timer-v47'\x60 in the source file is a placeholder that the build overwrites. ([src/main.js:28](../src/main.js), [public/service-worker.js:3](../public/service-worker.js), [vite.config.js:6–27](../vite.config.js))
+
+**Entry points:**
+
+- Web dev: \x60npm run dev\x60 → Vite on port \x608080\x60 → [src/main.js](../src/main.js) (note: the dev server config in [vite.config.js:36–38](../vite.config.js) overrides Vite's default 5173 — the value in CLAUDE.md is stale)
+- Web preview: \x60npm run build && npm run preview\x60 (preview defaults to \x604173\x60)
+- Tests: \x60npm test\x60 (Vitest, 11 test files, ~151 tests)
+- Android emulator: \x60./run.sh\x60 (manages AVD lifecycle, persistent Gradle home in \x60.gradle-home/\x60)
+- Android phone: \x60./deploy-phone.sh\x60 (interactive \x60adb\x60 device picker)
+
+**If you're modifying X, start at Y:** see the [Code Map](#code-map).
+
+**Non-goals:**
+
+- iOS native build path (the \x60@capacitor/ios\x60 dev dep is present but no run script; only Android is wired end-to-end)
+- Cloud sync, accounts, or multi-user — everything is on-device
+- Generic fitness tracking — the bio analytics are tuned for meditative HR/respiration profiles (settle time, breathlessness, torpor)
+- Custom Android plugin code — \x60android/app/src/main/java/\x60 is empty; all native capability comes from external Capacitor plugins
+
+---
+
+## What It Does {#features}
+<!-- last-verified: 2026-05-05 -->
+
+A focused, offline-first meditation timer that strikes a metallic gong on a configurable cadence (default every 15 minutes, with a "settling" gong at 15s), keeps timing accurate across screen lock and background, and — when the user opts in to Android Health Connect — records HR / HRV / SpO2 / respiration during the session and turns it into a one-screen reflection.
+
+- **Start a meditation timer** with audible gongs that survive screen lock and Android Doze.
+- **Get a settling gong at 15 seconds** to mark the start of stillness, plus interval gongs at every 15-minute mark (or 5-minute in dev mode).
+- **Read a per-session detail page** with HR/HRV/SpO2 line charts, settle time, classification (\x60somnolent\x60/\x60deep_absorption\x60/\x60absorbed\x60/\x60settling\x60/\x60restless\x60), and one-line evidence ("Settled in 3m", "Heart rate remained elevated").
+- **See longitudinal stats**: streak, weekly/monthly totals, 30-day duration bar chart, settle-time trend.
+- **Use it offline** as a PWA on web, or installed natively on Android via Capacitor with cached app shell + service worker.
+
+---
+
+## Architecture Overview {#architecture}
+<!-- last-verified: 2026-05-05 -->
+
+The system is a thin browser app boot path that loads platform-conditional storage and a router, then mounts four views. Two cross-cutting subsystems handle the hard parts: timing+gongs (foreground audio + background notifications + foreground service) and bio (Health Connect query → pure-function math → insights).
+
+\x60\x60\x60mermaid
+graph TD
+    Boot["boot()<br/>src/main.js:221"] --> CSA["createStorageAdapter()<br/>src/main.js:10"]
+    CSA -->|"native"| FSA["FilesystemAdapter<br/>storage/filesystem-adapter.js"]
+    CSA -->|"web"| LSA["LocalStorageAdapter<br/>storage/local-storage-adapter.js"]
+    Boot --> MIG["runMigrationIfNeeded()<br/>storage/migration.js"]
+    Boot --> IBG["initBackgroundGongs()<br/>timer/background-gong.js:151"]
+    Boot --> Router["initRouter()<br/>ui/router.js:18"]
+
+    Router --> TV["timer-view.js"]
+    Router --> DV["dashboard-view.js"]
+    Router --> SV["session-view.js"]
+    Router --> IV["insights-view.js"]
+
+    TV --> Timer["timer.js<br/>wall-clock + gong rule"]
+    Timer --> Gong["Gong<br/>timer/gong.js (Web Audio)"]
+    Timer --> BG["background-gong.js<br/>schedule/cancel notifications"]
+    Timer --> FGS["ForegroundService<br/>@capawesome plugin"]
+    BG --> LN["LocalNotifications<br/>@capacitor/local-notifications"]
+
+    TV --> HC["health-connect-service.js<br/>@capgo/capacitor-health"]
+    SV --> HC
+    HC --> Bio["analyzeSession()<br/>bio/bio-math-engine.js:255"]
+    Bio --> Insights["insights<br/>(settleTime, classification, ...)"]
+    Insights --> FSA
+    Insights --> LSA
+
+    FSA --> NativeFS[("Capacitor Directory.Data<br/>MeditationApp/sessions/{id}/")]
+    LSA --> WebStorage[("localStorage<br/>meditation_sessions_v2")]
+
+    SV --> Charts["chart-panel.js<br/>(lazy Chart.js + annotation)"]
+\x60\x60\x60
+
+The two architectural choices visible in this diagram: **storage is swapped at boot** behind a single \x60DataStorageInterface\x60 contract, so the rest of the app never knows whether it's writing localStorage JSON or per-session files; and **gongs run on two independent rails** (Web Audio when foreground, scheduled local notifications when backgrounded), with \x60visibilitychange\x60 orchestrating the handoff so neither plays the same gong twice and neither misses one. The bio pipeline is deliberately one-way and stateless — Health Connect → pure math → store insights inside the session record, with no caching or back-references.
+
+---
+
+## Component Inventory {#components}
+<!-- last-verified: 2026-05-05 -->
+
+| Component | Owns / Responsible for | Does NOT own |
+|---|---|---|
+| [src/main.js](../src/main.js) | App boot, storage adapter selection, version footer, dev panel, service worker registration, \x60window.meditationDebug\x60 | Any business logic — pure orchestration |
+| [src/timer/timer.js](../src/timer/timer.js) | Wall-clock elapsed time, gong rule evaluation in foreground, visibility handoff to background scheduler, foreground-service lifecycle, session save callback | Audio synthesis, notification scheduling, persistence |
+| [src/timer/gong.js](../src/timer/gong.js) | Web Audio additive synthesis, multi-strike pacing (7s gap) | Anything notification-related, when-to-play logic |
+| [src/timer/background-gong.js](../src/timer/background-gong.js) | Notification channel lifecycle, schedule computation (\x60computeGongSchedule\x60), schedule/cancel calls, foreground-service start/stop, exact-alarm permission helpers, on-device diagnostic log | Foreground audio, timer state, UI |
+| [src/storage/storage-interface.js](../src/storage/storage-interface.js) | Abstract contract: \x60initialize\x60, \x60saveSession\x60, \x60getSession\x60, \x60getAllSessions\x60, \x60saveTelemetry\x60, \x60getTelemetry\x60, \x60deleteSession\x60 | Any concrete I/O |
+| [src/storage/local-storage-adapter.js](../src/storage/local-storage-adapter.js) | Web persistence in \x60meditation_sessions_v2\x60, per-session \x60meditation_telemetry_{id}\x60, 250-session LRU cap | Native filesystem, migration |
+| [src/storage/filesystem-adapter.js](../src/storage/filesystem-adapter.js) | Native persistence under \x60Directory.Data/MeditationApp/sessions/{id}/{metadata,telemetry}.json\x60, ID validation, index cache | Web localStorage, migration |
+| [src/storage/mock-adapter.js](../src/storage/mock-adapter.js) | In-memory store for tests / demo | Persistence |
+| [src/storage/migration.js](../src/storage/migration.js) | One-shot v1→v2 conversion, gated by \x60MIGRATION_FLAG\x60 | The schema definition itself (lives in writers) |
+| [src/bio/bio-math-engine.js](../src/bio/bio-math-engine.js) | Stateless analysis: settle time, RMSSD, RSA respiration extraction, skin-temp trend, torpor detection, classification, \x60analyzeSession\x60 orchestrator | Data fetching, persistence, UI |
+| [src/bio/health-connect-service.js](../src/bio/health-connect-service.js) | HC availability/permission/query/seed via \x60@capgo/capacitor-health\x60, normalized telemetry shape | Analysis, persistence |
+| [src/bio/mock-data.js](../src/bio/mock-data.js) | Synthetic profiles (\x60PROFILE_RESTLESS\x60, \x60PROFILE_DEEP\x60, \x60PROFILE_SOMNOLENT\x60) for dev/tests | Real data |
+| [src/ui/router.js](../src/ui/router.js) | Hash-based view selection, param sanitization, view show/hide, tab-bar active state | View rendering, data |
+| [src/ui/views/](../src/ui/views/) | Per-view DOM mount + render functions (\x60mount*\x60 once, \x60render*\x60 per navigation) | Domain logic, persistence |
+| [src/ui/components/tab-bar.js](../src/ui/components/tab-bar.js) | Bottom-nav tabs, dispatches \x60navigateTo()\x60 | Routing internals |
+| [src/ui/components/chart-panel.js](../src/ui/components/chart-panel.js) | Lazy-load Chart.js + annotation plugin + date adapter; chart config builders | Data, layout |
+| [src/ui/session-language.js](../src/ui/session-language.js) | Translates raw insights into human-readable summaries / evidence phrases | Computing the insights |
+| [src/utils/](../src/utils/) | \x60date-helpers\x60 (formatting, streaks, week math), \x60csv\x60 (parse/serialize), \x60escape-html\x60 (XSS-safe entities) | Anything domain-specific |
+| [public/service-worker.js](../public/service-worker.js) | Offline cache: pre-cache app shell, cache-first for same-origin fetches, version-keyed cache cleanup on activate | Anything app-level |
+
+---
+
+## Code Map {#code-map}
+<!-- last-verified: 2026-05-05 -->
+
+The single most useful section if you're about to make a change. Each row names the *intent* a contributor actually has and points at the files to touch.
+
+| If you want to... | Start here | Then probably also touch |
+|---|---|---|
+| Change the gong cadence (interval, settling-gong time) | [src/timer/timer.js:64–72](../src/timer/timer.js) (\x60_checkGongs\x60), [src/timer/background-gong.js:179–200](../src/timer/background-gong.js) (\x60computeGongSchedule\x60) — the foreground and background rules MUST stay identical | [src/timer/background-gong.js:44–55](../src/timer/background-gong.js) (interval helpers); [src/timer/background-gong.test.js](../src/timer/background-gong.test.js) and [src/timer/timer.test.js](../src/timer/timer.test.js) |
+| Change the audible gong sound | [src/timer/gong.js:18–43](../src/timer/gong.js) (foreground synthesis) AND \x60android/app/src/main/res/raw/gong.wav\x60 (background notification sound — channel \x60gong\x60 references it) |  |
+| Add or change a storage backend | Implement \x60DataStorageInterface\x60 from [src/storage/storage-interface.js](../src/storage/storage-interface.js); register selection in [src/main.js:10–15](../src/main.js) | [src/storage/migration.js](../src/storage/migration.js) if persisted shape changes |
+| Bump the session schema | [src/storage/migration.js:22](../src/storage/migration.js) (raise \x60schemaVersion\x60), add a new migration step, and bump \x60MIGRATION_FLAG\x60 ([line 5](../src/storage/migration.js)) so it re-runs once | All three adapters' \x60saveSession\x60; tests in [src/storage/migration.test.js](../src/storage/migration.test.js) |
+| Add a new bio metric | [src/bio/health-connect-service.js:7](../src/bio/health-connect-service.js) (\x60HC_READ_TYPES\x60 + \x60querySession\x60 mapping); [src/bio/bio-math-engine.js:255](../src/bio/bio-math-engine.js) (\x60analyzeSession\x60); [src/ui/views/session-view.js](../src/ui/views/session-view.js) for chart + summary; tests in [src/bio/bio-math-engine.test.js](../src/bio/bio-math-engine.test.js) | \x60android/app/src/main/AndroidManifest.xml\x60 if a new HC permission is needed |
+| Add a new view / route | [src/ui/router.js:4–9](../src/ui/router.js) (\x60VIEW_IDS\x60); add a \x60view-<name>\x60 element in \x60index.html\x60; create \x60src/ui/views/<name>-view.js\x60 with \x60mount*\x60/\x60render*\x60; mount in [src/main.js:238–249](../src/main.js); add tab in [src/ui/components/tab-bar.js](../src/ui/components/tab-bar.js) if user-facing |  |
+| Change the cache strategy | [public/service-worker.js](../public/service-worker.js) — \x60swCacheBuster\x60 will auto-rewrite \x60CACHE_NAME\x60 on next \x60vite build\x60 ([vite.config.js:6–27](../vite.config.js)) | Bump \x60APP_VERSION\x60 in [src/main.js:28](../src/main.js) for the visible footer |
+| Bump the visible UI version | [src/main.js:28](../src/main.js) (\x60APP_VERSION\x60) — that's all; service-worker cache name is auto-rebuilt |  |
+| Add an Android permission | \x60android/app/src/main/AndroidManifest.xml\x60; rebuild via \x60./run.sh\x60 or \x60./deploy-phone.sh\x60 (no \x60--skip-build\x60) |  |
+| Mock telemetry / demo a session | \x60meditationDebug.simulateBioSession('deep'\|'restless'\|'somnolent')\x60 from console — wired in [src/main.js:283–286](../src/main.js); profiles in [src/bio/mock-data.js](../src/bio/mock-data.js) |  |
+| Add or change an XSS-safe rendering path | Use [src/utils/escape-html.js](../src/utils/escape-html.js) at the call site; do not write raw \x60innerHTML\x60 for user data |  |
+
+---
+
+## Data Flow {#data-flow}
+<!-- last-verified: 2026-05-05 -->
+
+### Journey 1 — Active session with foreground + background gongs
+
+\x60\x60\x60mermaid
+sequenceDiagram
+    participant U as User
+    participant TV as timer-view
+    participant T as timer.js
+    participant G as Gong (Web Audio)
+    participant BG as background-gong.js
+    participant LN as LocalNotifications<br/>(@capacitor)
+    participant FGS as ForegroundService
+
+    U->>TV: tap Start
+    TV->>T: startTimer()
+    T->>G: gong.init() (user-gesture unlock)
+    T->>FGS: startMeditationForegroundService()
+    T->>BG: scheduleBackgroundGongs(0, 'startTimer')
+    BG->>BG: _ensureChannels()
+    BG->>LN: schedule(notifications)
+    Note over T,G: setInterval(1s) — wall-clock _syncElapsed()
+    T->>G: play(N) at t=15, t=interval, ...
+
+    U->>U: locks screen
+    Note over T: visibilitychange: hidden
+    T->>T: handleVisibilityHidden() — sync only
+
+    Note over LN,FGS: alarms fire while backgrounded;<br/>notifications display + sound
+
+    U->>U: unlocks screen
+    Note over T: visibilitychange: visible
+    T->>BG: cancelBackgroundGongs('visibilityResume')
+    T->>BG: scheduleBackgroundGongs(elapsed, 'visibilityResume')
+    Note over T: do NOT _checkGongs() — notifs already played
+
+    U->>TV: tap Finish
+    TV->>T: finishTimer()
+    T->>BG: cancelBackgroundGongs('finishTimer')
+    T->>FGS: stopMeditationForegroundService()
+    T-->>TV: onSessionSave({duration, start, end})
+\x60\x60\x60
+
+The whole architecture exists to keep gongs reliable when the screen is off. Two rails — foreground Web Audio and scheduled local notifications — would double-play if both ran simultaneously, so \x60visibilitychange\x60 is the explicit handoff: when hidden, only the notifications fire; when visible again, the timer cancels remaining notifications and resumes Web Audio without replaying gongs the user already heard. The acknowledged limitation: Android's \x60setExactAndAllowWhileIdle()\x60 throttles to ~9 minutes per app in Doze, so multi-strike gongs (e.g., 2 strikes 7s apart) may only deliver the first while backgrounded ([src/timer/background-gong.js:16–19](../src/timer/background-gong.js)).
+
+### Journey 2 — Session detail rendering
+
+\x60\x60\x60mermaid
+sequenceDiagram
+    participant U as User
+    participant R as router.js
+    participant SV as session-view
+    participant ST as storage adapter
+    participant SL as session-language
+    participant CP as chart-panel
+
+    U->>R: navigateTo('session', [id])
+    R->>R: _parseHash() — sanitize id to [A-Za-z0-9_-]
+    R->>SV: renderSessionView([id])
+    SV->>ST: getSession(id)
+    ST-->>SV: session metadata + insights
+    SV->>ST: getTelemetry(id)
+    ST-->>SV: {hr, hrv, spo2, resp, ...}
+    SV->>SL: buildSessionSummary(session)
+    SL-->>SV: human-readable evidence
+    SV->>CP: lazy import('chart.js')
+    CP-->>SV: render HR/HRV/SpO2 line charts
+\x60\x60\x60
+
+The render path is deliberately serial and side-effect-free apart from chart mounting. Chart.js is imported on first use only ([src/ui/components/chart-panel.js](../src/ui/components/chart-panel.js)), so the timer view stays light. The router's regex-stripped \x60id\x60 ([src/ui/router.js:33](../src/ui/router.js)) is the same shape the filesystem adapter validates ([src/storage/filesystem-adapter.js:14–18](../src/storage/filesystem-adapter.js)) — defense in depth across two layers.
+
+---
+
+## Key Design Decisions {#decisions}
+<!-- last-verified: 2026-05-05 -->
+
+**1. Wall-clock elapsed time, not interval-tick counting** *(established before v9)*
+\x60setInterval\x60 callbacks are throttled or paused when a tab/app backgrounds. Recomputing elapsed from \x60Date.now() - _resumeWallTime\x60 keeps the displayed timer accurate even after a 30-minute screen lock. Cost: tick-skip handling in \x60_checkGongs(prev, curr)\x60 to fire gongs for any seconds that were skipped. ([src/timer/timer.js:57–72](../src/timer/timer.js))
+
+**2. Two-rail gongs with visibility handoff** *(v8 rewrite)*
+Foreground = Web Audio (low latency, reliable while focused). Background = local notifications scheduled in advance (Doze-safe; alarms fire even with the WebView paused). On \x60visibilitychange\x60, we cancel the unfired notifications and reschedule from current elapsed; on hide, we don't reschedule (Android suspends the WebView mid-\x60schedule()\x60 call). ([src/timer/timer.js:149–177](../src/timer/timer.js), [src/timer/background-gong.js:1–22](../src/timer/background-gong.js))
+
+**3. Channel pre-creation as a hard precondition** *(Android 8+ requirement)*
+A notification referencing a missing channel is silently dropped — no error, no display, no sound. \x60_ensureChannels()\x60 runs at boot AND inline before each schedule, with a 5s timeout and a \x60localStorage\x60 flag so we don't repeat the work. ([src/timer/background-gong.js:104–145](../src/timer/background-gong.js))
+
+**4. v2 schema with one-shot migration flag** *(v6 migration)*
+v1 stored only \x60{id, date, duration, type}\x60 in \x60meditation_history\x60. The v2 schema adds \x60startTimestamp\x60, \x60insights\x60, \x60hasTelemetry\x60, \x60schemaVersion\x60. Migration runs once gated by \x60MIGRATION_FLAG\x60; v1 sessions are tagged \x60migratedFromV1: true\x60 with \x60startTimestamp: null\x60. ([src/storage/migration.js:5,22](../src/storage/migration.js))
+
+**5. Storage swapped at boot behind one contract**
+\x60DataStorageInterface\x60 is the single contract. Web → \x60LocalStorageAdapter\x60 (in-memory cache, 250-session LRU). Native → \x60FilesystemAdapter\x60 (per-session directory under \x60Directory.Data/MeditationApp/\x60). The rest of the app is platform-agnostic. ([src/storage/storage-interface.js](../src/storage/storage-interface.js), [src/main.js:10–15](../src/main.js))
+
+**6. Stateless bio math, side-effect-free**
+\x60bio-math-engine.js\x60 has no DOM access, no storage, no fetches. Every function takes telemetry in and returns insights out. This is what makes 151 tests cheap to run and what lets \x60meditationDebug.simulateBioSession()\x60 exist as a one-liner. ([src/bio/bio-math-engine.js:1–14](../src/bio/bio-math-engine.js))
+
+**7. \x60swCacheBuster\x60 Vite plugin auto-bumps the SW cache name** *(removes a manual-discipline trap)*
+Old workflow required hand-editing \x60CACHE_NAME\x60 on every UI change or risk stale-cache bugs. The build plugin now hashes \x60index.html\x60 and rewrites \x60CACHE_NAME\x60 to \x60meditation-timer-<sha256[:10]>\x60 after every \x60vite build\x60. The literal value in the source file is just a placeholder. ([vite.config.js:6–27](../vite.config.js))
+
+**8. Hash-route param whitelist + storage-layer ID validation** *(defense in depth)*
+Both \x60router.js\x60 and \x60filesystem-adapter.js\x60 independently restrict IDs to \x60[A-Za-z0-9_-]\x60. Either alone would be enough; both together mean a bug in one doesn't open a hole. ([src/ui/router.js:33](../src/ui/router.js), [src/storage/filesystem-adapter.js:14–18](../src/storage/filesystem-adapter.js))
+
+---
+
+## Key Data Structures {#data-structures}
+<!-- last-verified: 2026-05-05 -->
+
+### v2 Session record (persisted by all adapters)
+
+\x60\x60\x60js
+{
+  id:               "ses_<timestamp>",   // [A-Za-z0-9_-]+ enforced at storage boundary
+  startTimestamp:   "2026-04-26T10:30:00.000Z",  // ISO; null for v1-migrated sessions
+  endTimestamp:     "2026-04-26T11:15:00.000Z",
+  duration:         2700,                // seconds
+  hasTelemetry:     true,                // flipped by saveTelemetry()
+  insights:         { ... },             // see below; null if no telemetry
+  type:             "meditation",
+  schemaVersion:    2,
+  // optional, set by HC seed flow:
+  telemetrySource:  "health_connect" | "mock",
+  telemetryReason:  "string",
+  // optional, set by migration:
+  migratedFromV1:   true,
+}
+\x60\x60\x60
+
+### Telemetry shape returned by \x60health-connect-service.querySession()\x60
+
+\x60\x60\x60js
+{
+  hr:   [{ timestamp: ISO, value: bpm }, ...],
+  hrv:  [{ timestamp: ISO, value: ms_RMSSD }, ...],   // sparse, ~1 per 5 min from HC
+  spo2: [{ timestamp: ISO, value: pct }, ...],
+  resp: [{ timestamp: ISO, value: br_per_min }, ...], // direct from HC; preferred over RSA
+  temp: [],                                            // not exposed by current plugin
+  source: "health_connect"
+}
+\x60\x60\x60
+
+### Insights object emitted by \x60analyzeSession()\x60
+
+\x60\x60\x60js
+{
+  settleTime:        { seconds, timestamp } | null,         // 5%-band-for-60s rule
+  avgHR:             number,
+  respirationRate:   { average, breathlessPeriodsCount, source, confidence, warning? },
+  skinTemp:          { delta, trend: 'rising'|'falling'|'flat' } | null,
+  spo2:              { torpidFlag, ... },
+  sessionQuality:    'restless'|'settling'|'absorbed'|'deep_absorption'|'somnolent',
+}
+\x60\x60\x60
+
+Classification priority (highest wins): \x60somnolent\x60 (torpid SpO2) > \x60deep_absorption\x60 (breathless+rising temp) > \x60absorbed\x60 (settle <300s) > \x60settling\x60 (settle >=300s) > \x60restless\x60. ([src/bio/bio-math-engine.js:228–241](../src/bio/bio-math-engine.js))
+
+### Background gong notification entry
+
+\x60\x60\x60js
+{
+  id:        number,         // 1-based, monotonic per schedule
+  fireAt:    Date,           // wall-clock fire time (allowWhileIdle: true)
+  // assembled in scheduleBackgroundGongs():
+  title:     "Meditation",
+  body:      "Gong #<id>",
+  channelId: "gong" | "gong_diag",   // CHANNEL_ID_GONG or CHANNEL_ID_DEFAULT
+  sound:     "gong" | undefined,     // omitted when using system chime
+  smallIcon: "ic_launcher_foreground",
+  autoCancel: true,
+}
+\x60\x60\x60
+
+---
+
+## Extension Points {#extension-points}
+<!-- last-verified: 2026-05-05 -->
+
+- **New storage backend** — Implement every method on \x60DataStorageInterface\x60 from [src/storage/storage-interface.js](../src/storage/storage-interface.js); register it inside \x60createStorageAdapter()\x60 in [src/main.js:10–15](../src/main.js). Beware: \x60getAllSessions()\x60 returns lightweight index entries (no telemetry) — the app relies on this distinction; copying the full object including telemetry will blow up memory in long histories.
+
+- **New bio metric** — Add the type to \x60HC_READ_TYPES\x60 in [src/bio/health-connect-service.js:7](../src/bio/health-connect-service.js); map it inside \x60querySession()\x60 to a \x60{timestamp, value}\x60 series; consume it in \x60analyzeSession()\x60 ([src/bio/bio-math-engine.js:255](../src/bio/bio-math-engine.js)); render it in [src/ui/views/session-view.js](../src/ui/views/session-view.js). Add the HC permission to \x60android/app/src/main/AndroidManifest.xml\x60. Tests in [src/bio/bio-math-engine.test.js](../src/bio/bio-math-engine.test.js).
+
+- **New gong cadence option** — Add a new branch to \x60getGongIntervalSec()\x60 ([src/timer/background-gong.js:44–48](../src/timer/background-gong.js)). Both \x60_checkGongs()\x60 ([src/timer/timer.js:64–72](../src/timer/timer.js)) and \x60computeGongSchedule()\x60 ([src/timer/background-gong.js:179–200](../src/timer/background-gong.js)) read from the same helper, so they stay in sync automatically. Beware: the multi-strike Doze throttle still applies — high-strike-count cadences will lose strikes while backgrounded.
+
+- **New view / route** — Add to \x60VIEW_IDS\x60 in [src/ui/router.js:4–9](../src/ui/router.js); add a matching \x60<div id="view-<name>">\x60 in \x60index.html\x60; create \x60src/ui/views/<name>-view.js\x60 exporting \x60mount<Name>View(storage)\x60 and \x60render<Name>View(params)\x60; mount + register the route handler in [src/main.js:238–249](../src/main.js); add a tab in [src/ui/components/tab-bar.js](../src/ui/components/tab-bar.js) if user-facing.
+
+- **New mock bio profile** — Add a \x60PROFILE_<NAME>\x60 export to [src/bio/mock-data.js](../src/bio/mock-data.js); register it in \x60_BIO_PROFILES\x60 in [src/main.js:35–39](../src/main.js); it becomes invokable via \x60meditationDebug.simulateBioSession('<name>')\x60.
+
+- **New notification channel** — Define a \x60CHANNEL_ID_<NAME>\x60 constant in [src/timer/background-gong.js:29–30](../src/timer/background-gong.js); add a \x60LocalNotifications.createChannel({...})\x60 call inside \x60_createChannels()\x60 ([line 108](../src/timer/background-gong.js)); bump \x60CHANNELS_KEY\x60 from \x60gong_channels_v2\x60 to force re-creation on existing installs ([line 106](../src/timer/background-gong.js)).
+
+---
+
+## External Dependencies {#dependencies}
+<!-- last-verified: 2026-05-05 -->
+
+| Dependency | Purpose | Runtime? | Network/FS? |
+|---|---|---|---|
+| \x60@capacitor/core\x60 | Native bridge core | Yes | — |
+| \x60@capacitor/android\x60 | Android platform binding | Yes | — |
+| \x60@capacitor/filesystem\x60 | Per-session metadata + telemetry I/O | Yes | **FS** |
+| \x60@capacitor/local-notifications\x60 | Background gong scheduling | Yes | OS scheduler |
+| \x60@capawesome-team/capacitor-android-foreground-service\x60 | Persistent service so Doze doesn't kill the timer | Yes | OS service |
+| \x60@capgo/capacitor-health\x60 | Health Connect read/write for HR / HRV / SpO2 / RespRate | Yes | HC IPC + permissions |
+| \x60chart.js\x60 | Session detail + insights charts | Yes (lazy) | — |
+| \x60chartjs-adapter-date-fns\x60 | Time-axis adapter for Chart.js | Yes (lazy) | — |
+| \x60chartjs-plugin-annotation\x60 | Settle-time line annotations on charts | Yes (lazy) | — |
+| \x60date-fns\x60 | Date math used by adapter and views | Yes | — |
+| \x60@capacitor/cli\x60 | \x60npx cap sync android\x60 etc. | Dev | — |
+| \x60@capacitor/ios\x60 | iOS dep present but not wired end-to-end | Dev | — |
+| \x60vite\x60 | Build + dev server (custom \x60swCacheBuster\x60 plugin) | Dev | **FS at build** |
+| \x60vitest\x60 | Test runner | Dev | — |
+
+No remote services. No telemetry SDK. No analytics. Pure on-device.
+
+---
+
+## Operations {#operations}
+<!-- last-verified: 2026-05-05 -->
+
+### Web
+
+- \x60npm run dev\x60 — Vite dev server on **port 8080** ([vite.config.js:36–38](../vite.config.js)).
+- \x60npm run build\x60 — produces \x60www/\x60. The \x60swCacheBuster\x60 plugin then rewrites \x60CACHE_NAME\x60 in \x60www/service-worker.js\x60 to a SHA256-keyed value derived from the built \x60index.html\x60.
+- \x60npm run preview\x60 — Vite preview server on default port 4173.
+
+### Android
+
+- Emulator: \x60./run.sh [--skip-build] [--stop]\x60 — manages AVD \x60Meditation_Phone\x60, builds web + Gradle (with \x60GRADLE_USER_HOME=../.gradle-home --no-daemon\x60), installs APK, clears app data, launches.
+- Physical: \x60./deploy-phone.sh [--skip-build]\x60 — interactive \x60adb\x60 device picker, then same build/install flow targeting the chosen device.
+- APK output: \x60android/app/build/outputs/apk/debug/app-debug.apk\x60.
+- Gradle home is pinned to \x60.gradle-home/\x60 (do not move to \x60/tmp\x60 — see CLAUDE.md and android/CLAUDE.md). \x60--no-daemon\x60 is required on macOS Sequoia.
+
+### Permissions required (AndroidManifest.xml)
+
+| Permission | Purpose |
+|---|---|
+| \x60INTERNET\x60 | Required by Capacitor WebView |
+| \x60SCHEDULE_EXACT_ALARM\x60 | Wake-precise scheduling for background gongs |
+| \x60FOREGROUND_SERVICE\x60, \x60FOREGROUND_SERVICE_SPECIAL_USE\x60 | Persistent service during active session |
+| \x60health.READ_HEART_RATE\x60, \x60READ_HEART_RATE_VARIABILITY_RMSSD\x60, \x60READ_OXYGEN_SATURATION\x60, \x60READ_RESPIRATORY_RATE\x60 | Health Connect read access |
+
+### Service worker pre-cache
+
+\x60./\x60, \x60./index.html\x60, \x60./manifest.json\x60 ([public/service-worker.js:7–12](../public/service-worker.js)). All other assets are cached on first fetch (cache-first for same-origin). Old caches are deleted on \x60activate\x60 if their key doesn't match the current \x60CACHE_NAME\x60.
+
+### No env vars, no remote services
+
+Everything runs locally. There are no secrets to manage, no API keys, no backend.
+
+### Health checks / observability
+
+On-device gong diagnostic log: \x60meditationDebug.storage\x60 exposes the storage adapter; the dev panel's "View Gong Log" button shows the last 200 entries written by \x60_log()\x60 in [src/timer/background-gong.js:74–84](../src/timer/background-gong.js). No remote logging.
+
+---
+
+## Glossary {#glossary}
+<!-- last-verified: 2026-05-05 -->
+
+- **APK** — Android Package; the installable artifact at \x60android/app/build/outputs/apk/debug/app-debug.apk\x60.
+- **Channel (notification)** — Android 8+ grouping that owns sound + importance for a class of notifications. Notifications referencing a missing channel are silently dropped.
+- **Doze** — Android's power-saving idle state that throttles background work and exact alarms.
+- **Exact alarm** — Android scheduling primitive (\x60setExactAndAllowWhileIdle\x60) used by \x60@capacitor/local-notifications\x60 for precise wake. Throttled to ~9 min per app in Doze.
+- **Foreground service** — Android service shown in the notification shade that prevents the app from being killed during meditation.
+- **Gong rule** — \x60t === 15\x60 → 1 strike; \x60t > 0 && t % intervalSec === 0\x60 → \x60t / intervalSec\x60 strikes.
+- **HC** — Health Connect: Android's user-managed health-data store, read via \x60@capgo/capacitor-health\x60.
+- **PWA** — Progressive Web App: installable web app with service worker offline cache and a manifest.
+- **RMSSD** — Root mean square of successive differences (between RR intervals); a short-term HRV metric in milliseconds.
+- **RSA** — Respiratory Sinus Arrhythmia; HR speeding up on inhale and slowing on exhale, used to extract breathing rate from dense HRV data.
+- **Schema version** — Persisted integer (\x60schemaVersion: 2\x60) on every session record, gating one-shot migration.
+- **Settle time** — Seconds from session start until HR stays within 5% of session minimum continuously for ≥60s (excluding first 30s warm-up).
+- **Somnolent / Deep Absorption / Absorbed / Settling / Restless** — Five-tier classification emitted by \x60classifySession()\x60; somnolent indicates likely sleep, deep_absorption indicates breathlessness with rising peripheral temperature.
+- **Strike** — One audible gong hit. Multi-strike events space hits 7s apart.
+- **Telemetry source** — Indicates origin of bio data: \x60health_connect\x60 (real) vs \x60mock\x60 (synthetic profile from \x60bio/mock-data.js\x60).
+- **Torpor** — Strict deep-rest signature: HR < 4 bpm AND SpO2 < 94% (or ≥3% drop from baseline). Distinct from breathless meditation.
+
+---
+
+## End-to-End Use-Case Workflow {#workflow}
+<!-- last-verified: 2026-05-05 -->
+
+The maximally exercising path: a 45-minute meditation on Android with Health Connect, including a screen-off interval and an in-app review afterwards.
+
+1. **Launch app.** Capacitor loads \x60www/index.html\x60. \x60boot()\x60 runs ([src/main.js:221](../src/main.js)): selects \x60FilesystemAdapter\x60 (native), runs migration if needed, calls \x60initBackgroundGongs()\x60 to create the two notification channels, mounts all four views, registers the service worker, and (DEV only) attaches \x60window.meditationDebug\x60.
+2. **Tap Start in the timer view.** \x60mountTimerView\x60 (in [src/ui/views/timer-view.js](../src/ui/views/timer-view.js)) calls \x60startTimer()\x60. \x60startTimer()\x60 ([src/timer/timer.js:77](../src/timer/timer.js)) initializes Web Audio (\x60gong.init()\x60 requires this user-gesture frame), starts the foreground service, sets the wall-clock anchor, and schedules background notifications.
+3. **15-second settling gong.** \x60setInterval(1000)\x60 fires, \x60_syncElapsed()\x60 reads \x60Date.now()\x60, \x60_checkGongs()\x60 sees \x60t === 15\x60 and calls \x60gong.play(1)\x60 → metallic strike via additive synthesis ([src/timer/gong.js:18–43](../src/timer/gong.js)).
+4. **User locks screen.** \x60visibilitychange\x60 → \x60hidden\x60 → \x60handleVisibilityHidden()\x60 ([src/timer/timer.js:174](../src/timer/timer.js)) syncs elapsed but does NOT re-schedule (would race with the WebView suspending). Notifications stay scheduled.
+5. **Background gong fires at the 15-min mark.** Android's exact-alarm wakes the system; \x60@capacitor/local-notifications\x60 displays one notification with \x60gong.wav\x60. The foreground service has kept the app alive.
+6. **User unlocks screen.** \x60visibilitychange\x60 → \x60visible\x60 → \x60handleVisibilityResume()\x60 ([src/timer/timer.js:149](../src/timer/timer.js)) cancels remaining notifications, re-syncs elapsed, advances \x60_lastGongCheckTime\x60 so we don't replay the gong notifications already played, and re-schedules from current elapsed for the next backgrounding.
+7. **Tap Finish.** \x60finishTimer()\x60 ([src/timer/timer.js:119](../src/timer/timer.js)) cancels notifications, stops the foreground service, and (if duration ≥ 10s) emits \x60onSessionSave({duration, startTimestamp, endTimestamp})\x60. Timer view's save handler queries Health Connect via \x60healthConnect.querySession(start, end)\x60 ([src/bio/health-connect-service.js:163](../src/bio/health-connect-service.js)), runs \x60analyzeSession(telemetry)\x60 ([src/bio/bio-math-engine.js:255](../src/bio/bio-math-engine.js)), assembles the v2 session record, calls \x60storage.saveTelemetry(id, telemetry)\x60 then \x60storage.saveSession(session)\x60.
+8. **Navigate to session detail.** \x60navigateTo('session', [id])\x60 updates the hash. \x60router.js\x60 sanitizes \x60id\x60 to \x60[A-Za-z0-9_-]\x60, dispatches to \x60renderSessionView([id])\x60 which loads metadata + telemetry from the adapter, builds human language via \x60session-language.js\x60, lazy-loads Chart.js via \x60chart-panel.js\x60, and renders HR/HRV/SpO2 line charts annotated with the settle-time marker.
+
+**Decision points / variations:**
+
+| Fork | Behavior |
+|---|---|
+| HC permission denied | Session is saved with \x60hasTelemetry: false\x60, \x60insights: null\x60. Detail view shows "no bio data" placeholder. |
+| Web (PWA) instead of Android | Steps 5–6 (background gongs + foreground service) become no-ops; only Web Audio gongs play and timing relies on the OS keeping the tab alive. |
+| Duration < 10s | \x60finishTimer()\x60 discards the session — no save, no insights. |
+| \x60meditationDebug.simulateBioSession('deep')\x60 invoked instead of a real session | Skips Health Connect entirely; runs a synthetic profile from \x60bio/mock-data.js\x60 through \x60analyzeSession()\x60 and persists it like a real session, then navigates to the detail view. |
+
+---
+
+*Self-verified 28 citations; fixed 2 (vite dev port: CLAUDE.md said 5173, code says 8080; HC method name: \x60requestReadWritePermissions\x60 per code, not \x60requestPermissions\x60); removed 0.*
+
+*2026-05-05 refresh: re-verified all citations against current code. Fixed 1 (SW placeholder name \x60meditation-timer-v46\x60 → \x60v47\x60, bumped in commit \x6008d66f2\x60/\x6098cd491\x60). All section stamps refreshed. No structural changes — gong.js v9.2 tone refinement is an audio-tweak, not an architectural change.*
+`;
+
+  const renderer = new marked.Renderer();
+  const origCode = renderer.code.bind(renderer);
+  renderer.code = (code, lang) => lang === "mermaid"
+    ? `<div class="mermaid">${code}</div>`
+    : origCode(code, lang);
+
+  document.getElementById("content").innerHTML = marked.parse(md, { renderer });
+  await mermaid.run({ querySelector: ".mermaid" });
+</script>
+</body>
+</html>

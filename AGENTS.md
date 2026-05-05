@@ -1,8 +1,8 @@
-# CLAUDE.md
+# AGENTS.md
 **Doc Status:** Current Reference
 
 
-This file provides guidance to Claude Code when working in this repository.
+This file provides guidance to Codex when working in this repository.
 
 ## Running the App
 
@@ -94,8 +94,8 @@ When changing app runtime/UI files, bump both:
 2. `CACHE_NAME` in `public/service-worker.js`
 
 Current values:
-- `APP_VERSION = 'v9.2'`
-- `CACHE_NAME = 'meditation-timer-v47'`
+- `APP_VERSION = 'v9.1'`
+- `CACHE_NAME = 'meditation-timer-v46'`
 
 If `CACHE_NAME` is not bumped, old cached `index.html` can mask updates on device.
 

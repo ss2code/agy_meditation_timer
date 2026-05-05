@@ -1,3 +1,6 @@
+# Bug Log
+**Doc Status:** Historical Archive
+
 ## B001 · Timer screen overflow on Samsung S25 Edge
 **Date:** 2026-04-09 | **Regression:** unknown | **Fix:** this session
 

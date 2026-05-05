@@ -8,3 +8,6 @@ jdk21.tar.gz
 android/.gradle_cache/
 .gradle-home/
 ios/
+pwiki/
+android/.idea/
+upload_from_phone/
