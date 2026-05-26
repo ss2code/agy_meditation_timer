@@ -11,3 +11,8 @@ ios/
 pwiki/
 android/.idea/
 upload_from_phone/
+
+# Cross-project regression sweep artifacts (~/Dev/projects/regression.sh)
+.regression-report.json
+.regression-screenshot.png
+.regression-streamlit.log
